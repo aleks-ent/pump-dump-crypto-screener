@@ -1,0 +1,22 @@
+timeout_s: 60
+# Per-host request rate, applied PER worker process (each worker keeps its own
+# token bucket), so effective rate ≈ rps * process count for that host.
+# Default process counts: binance 16, bybit 8.
+default_rps: 8
+host_rps:
+  # --- Archive CDNs: static files, tolerate high throughput ---
+  data.binance.vision: 20
+  # Bybit public CDN (CloudFront) often returns 403 when HEAD/GET is bursty.
+  public.bybit.com: 2
+  # --- REST kline/history endpoints: strict per-IP (weight) limits ---
+  # These caps are intentionally low because they multiply by process count
+  # (e.g. fapi 1 * 16 ≈ 16 req/s) and Binance/Bybit ban (418/429) quickly.
+  api.binance.com: 1
+  fapi.binance.com: 1
+  dapi.binance.com: 1
+  api.bybit.com: 1
+# Set true to skip public.bybit.com archives and use REST klines only (recommended if you see 403).
+bybit_skip_public_archives: true
+
+binance_vision_base: https://data.binance.vision
+bybit_public_base: https://public.bybit.com

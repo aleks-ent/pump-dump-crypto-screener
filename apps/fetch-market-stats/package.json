@@ -1,0 +1,27 @@
+{
+  "name": "fetch-market-stats",
+  "version": "0.1.0",
+  "description": "Discover instruments and pull 1m/5m candles via exchange REST APIs into raw/normalized NDJSON, quality reports, and symbol_universe.json",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "fetch-market-stats": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsup src/cli.ts --format esm --dts --clean",
+    "start": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@screener/core": "workspace:*",
+    "@screener/exchanges": "workspace:*",
+    "@screener/storage": "workspace:*",
+    "@screener/universe": "workspace:*",
+    "commander": "^12.1.0",
+    "p-limit": "^6.2.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

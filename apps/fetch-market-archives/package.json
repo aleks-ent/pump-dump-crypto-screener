@@ -1,0 +1,34 @@
+{
+  "name": "fetch-market-archives",
+  "version": "0.1.0",
+  "description": "Download bulk 1m/5m kline archives for symbol_universe.json (Binance/Bybit); REST API fallback only when archive files are missing",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "fetch-market-archives": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsup src/cli.ts src/run-exchange.ts src/run-all.ts src/worker.ts src/report-coverage.ts src/report-data-span.ts --format esm --dts --clean",
+    "start": "tsx src/cli.ts",
+    "all": "tsx src/run-all.ts",
+    "exchange": "tsx src/run-exchange.ts",
+    "worker": "tsx src/worker.ts",
+    "report:coverage": "tsx src/report-coverage.ts",
+    "report:data-span": "tsx src/report-data-span.ts"
+  },
+  "dependencies": {
+    "@screener/archive": "workspace:*",
+    "@screener/core": "workspace:*",
+    "@screener/pump-detector": "workspace:*",
+    "@screener/exchanges": "workspace:*",
+    "@screener/storage": "workspace:*",
+    "@screener/universe": "workspace:*",
+    "commander": "^12.1.0",
+    "p-limit": "^6.2.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

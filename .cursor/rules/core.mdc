@@ -1,0 +1,9 @@
+---
+description: Core standards for screener
+alwaysApply: true
+---
+
+# Pump monitor operations
+
+- Run **fetch and scan together** via `pnpm pump:monitor` (lookback days from `config.js` `pump.days`, default 5). Do not recommend splitting `fetch:all` and `scan:pumps` into separate cron jobs — the user wants a single sequential pipeline to avoid race conditions between download and detection.
+- Scan speed on repeat runs comes from the per-coin filesystem cache (`reports/scan_cache/`), not from decoupling fetch from scan.

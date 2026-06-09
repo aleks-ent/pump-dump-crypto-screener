@@ -1,0 +1,17 @@
+binance:
+  discovery_endpoints:
+    - https://api.binance.com/api/v3/exchangeInfo
+    - https://fapi.binance.com/fapi/v1/exchangeInfo
+    - https://dapi.binance.com/dapi/v1/exchangeInfo
+  candle_endpoints:
+    - https://api.binance.com/api/v3/klines
+    - https://fapi.binance.com/fapi/v1/klines
+    - https://dapi.binance.com/dapi/v1/klines
+  max_page_size: 1000
+
+bybit:
+  discovery_endpoints:
+    - https://api.bybit.com/v5/market/instruments-info
+  candle_endpoints:
+    - https://api.bybit.com/v5/market/kline
+  max_page_size: 1000

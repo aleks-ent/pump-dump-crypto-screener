@@ -1,0 +1,29 @@
+/** @type {import('pm2').StartOptions[]} */
+module.exports = {
+  apps: [
+    {
+      name: "pump-bot",
+      script: "pnpm",
+      args: "pump:bot",
+      cwd: __dirname,
+      interpreter: "none",
+      instances: 1,
+      exec_mode: "fork",
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 0,
+    },
+    {
+      name: "pump-monitor",
+      script: "pnpm",
+      args: "pump:monitor",
+      cwd: __dirname,
+      interpreter: "none",
+      instances: 1,
+      exec_mode: "fork",
+      autorestart: true,
+      max_restarts: 1000,
+      restart_delay: 0,
+    },
+  ],
+};

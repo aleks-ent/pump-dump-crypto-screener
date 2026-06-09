@@ -1,0 +1,25 @@
+{
+  "name": "pump-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "pump-monitor": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsup src/cli.ts src/bot.ts --format esm --dts --clean",
+    "start": "tsx src/cli.ts",
+    "bot": "tsx src/bot.ts"
+  },
+  "dependencies": {
+    "@screener/core": "workspace:*",
+    "@screener/db": "workspace:*",
+    "@screener/pump-detector": "workspace:*",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
