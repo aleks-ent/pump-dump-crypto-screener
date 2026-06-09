@@ -51,6 +51,9 @@ importers:
         specifier: ^6.2.0
         version: 6.2.0
     devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(postcss@8.5.15)(tsx@4.22.3)(typescript@5.9.3)(yaml@2.9.0)
@@ -82,6 +85,9 @@ importers:
         specifier: ^6.2.0
         version: 6.2.0
     devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(postcss@8.5.15)(tsx@4.22.3)(typescript@5.9.3)(yaml@2.9.0)
@@ -107,6 +113,9 @@ importers:
         specifier: ^12.1.0
         version: 12.1.0
     devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(postcss@8.5.15)(tsx@4.22.3)(typescript@5.9.3)(yaml@2.9.0)
@@ -135,6 +144,9 @@ importers:
         specifier: ^6.2.0
         version: 6.2.0
     devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(postcss@8.5.15)(tsx@4.22.3)(typescript@5.9.3)(yaml@2.9.0)
@@ -160,6 +172,9 @@ importers:
         specifier: ^6.2.0
         version: 6.2.0
     devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(postcss@8.5.15)(tsx@4.22.3)(typescript@5.9.3)(yaml@2.9.0)
@@ -176,6 +191,9 @@ importers:
         specifier: ^2.6.1
         version: 2.9.0
     devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(postcss@8.5.15)(tsx@4.22.3)(typescript@5.9.3)(yaml@2.9.0)
@@ -198,6 +216,9 @@ importers:
         specifier: workspace:*
         version: link:../pump-detector
     devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(postcss@8.5.15)(tsx@4.22.3)(typescript@5.9.3)(yaml@2.9.0)
@@ -217,6 +238,9 @@ importers:
         specifier: workspace:*
         version: link:../core
     devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(postcss@8.5.15)(tsx@4.22.3)(typescript@5.9.3)(yaml@2.9.0)
@@ -242,6 +266,9 @@ importers:
         specifier: ^0.8.2
         version: 0.8.3
     devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(postcss@8.5.15)(tsx@4.22.3)(typescript@5.9.3)(yaml@2.9.0)
@@ -258,6 +285,9 @@ importers:
         specifier: workspace:*
         version: link:../core
     devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(postcss@8.5.15)(tsx@4.22.3)(typescript@5.9.3)(yaml@2.9.0)
@@ -277,6 +307,9 @@ importers:
         specifier: workspace:*
         version: link:../exchanges
     devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(postcss@8.5.15)(tsx@4.22.3)(typescript@5.9.3)(yaml@2.9.0)
