@@ -1,5 +1,9 @@
 # Pump and Dump Crypto Screener
 
+<p align="center">
+  <img src="docs/assets/pump-dump-summary-demo.png" alt="Pump/dump summary terminal output — episodes table with coin, duration, peak, and TradingView links" width="900"/>
+</p>
+
 TypeScript pnpm monorepo for pulling 1m/5m market statistics and bulk kline archives from Binance and Bybit.
 
 ## How to set up
