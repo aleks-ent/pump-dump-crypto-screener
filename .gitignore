@@ -1,0 +1,8 @@
+node_modules/
+dist/
+config.js
+*.tsbuildinfo
+.DS_Store
+
+# Market data (archives, REST fallback, reports, scan cache) — populated by fetch:all / pump:monitor
+data/market_stats/
