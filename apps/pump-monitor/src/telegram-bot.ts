@@ -16,6 +16,7 @@ import {
   formatClassifiedPumpMessage,
   formatMonitorRunsMessage,
   formatPumpStatsMessages,
+  buildCommandReplyKeyboard,
   sendTelegramMessage,
   type TelegramConfig,
 } from "./telegram.js";
@@ -214,6 +215,11 @@ export async function runTelegramBot(
   log(
     `Telegram bot listening (chat ${config.telegram.chatId}, /stats, /runs, classification buttons enabled)`,
   );
+
+  await sendTelegramMessage(config.telegram, "Tap a button for /stats or /runs.", {
+    replyMarkup: buildCommandReplyKeyboard(),
+  });
+  log("Sent command reply keyboard");
 
   for (;;) {
     const updates = await fetchUpdates(config.telegram, offset);

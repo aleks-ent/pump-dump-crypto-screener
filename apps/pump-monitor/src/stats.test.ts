@@ -1,7 +1,12 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import type { PumpEpisode } from "@screener/pump-detector";
 import { createMemoryDbClient, PumpRepository } from "@screener/db";
-import { formatMonitorRunsMessage, formatPumpAlertMessage, formatPumpStatsMessages } from "./telegram.js";
+import {
+  buildCommandReplyKeyboard,
+  formatMonitorRunsMessage,
+  formatPumpAlertMessage,
+  formatPumpStatsMessages,
+} from "./telegram.js";
 import { buildClassificationKeyboard } from "./telegram-callback.js";
 
 function samplePump(coin: string, startMs: number, peakScore: number): PumpEpisode {
@@ -54,6 +59,15 @@ describe("PumpRepository list + telegram formatting", () => {
     expect(message).toContain("WLD/USDT");
     const keyboard = buildClassificationKeyboard(pump.index);
     expect(keyboard.inline_keyboard[0]).toHaveLength(3);
+  });
+});
+
+describe("buildCommandReplyKeyboard", () => {
+  it("exposes /stats and /runs as persistent reply buttons", () => {
+    const keyboard = buildCommandReplyKeyboard();
+    expect(keyboard.keyboard).toEqual([[{ text: "/stats" }, { text: "/runs" }]]);
+    expect(keyboard.resize_keyboard).toBe(true);
+    expect(keyboard.is_persistent).toBe(true);
   });
 });
 

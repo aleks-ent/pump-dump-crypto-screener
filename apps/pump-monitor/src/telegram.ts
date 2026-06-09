@@ -15,6 +15,22 @@ export interface InlineKeyboardMarkup {
   inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
 }
 
+export interface ReplyKeyboardMarkup {
+  keyboard: Array<Array<{ text: string }>>;
+  resize_keyboard?: boolean;
+  is_persistent?: boolean;
+}
+
+export type TelegramReplyMarkup = InlineKeyboardMarkup | ReplyKeyboardMarkup;
+
+export function buildCommandReplyKeyboard(): ReplyKeyboardMarkup {
+  return {
+    keyboard: [[{ text: "/stats" }, { text: "/runs" }]],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
 export async function loadTelegramConfig(): Promise<TelegramConfig | null> {
   const mod = await import(pathToFileURL(resolveRepoPath("config.js")).href);
   const cfg = (mod.default ?? mod) as {
@@ -198,7 +214,7 @@ async function telegramPost(config: TelegramConfig, method: string, body: Record
 export async function sendTelegramMessage(
   config: TelegramConfig,
   text: string,
-  opts?: { replyMarkup?: InlineKeyboardMarkup },
+  opts?: { replyMarkup?: TelegramReplyMarkup },
 ): Promise<void> {
   await telegramPost(config, "sendMessage", {
     chat_id: config.chatId,
