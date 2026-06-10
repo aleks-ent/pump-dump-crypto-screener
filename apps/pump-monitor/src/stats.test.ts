@@ -122,8 +122,9 @@ describe("formatPumpStatsMessages", () => {
       samplePump("OLD/USDT", Date.parse("2026-06-05T10:00:00.000Z"), 90),
       samplePump("NEW/USDT", Date.parse("2026-06-06T10:00:00.000Z"), 85),
     ]);
-    const pumps = await repo.listStoredPumps({ minScore: 80 });
+    const pumps = await repo.listStoredPumps({ minScore: 80, limit: 5 });
     const message = formatPumpStatsMessages(pumps, 80)[0] ?? "";
+    expect(message).toContain("<b>Pumps</b> · score &gt; 80 · last 5");
     expect(message.indexOf("NEW/USDT")).toBeLessThan(message.indexOf("OLD/USDT"));
   });
 });

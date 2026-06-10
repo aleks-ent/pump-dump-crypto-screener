@@ -139,27 +139,31 @@ export function formatPumpAlertMessage(pump: StoredPump): string {
 }
 
 function formatPumpStatsHeader(
-  total: number,
   minScore: number,
+  limit: number,
   part?: { index: number; total: number },
 ): string {
-  const label = `<b>Pumps</b> · score &gt; ${minScore} · ${total} total`;
+  const label = `<b>Pumps</b> · score &gt; ${minScore} · last ${limit}`;
   if (part && part.total > 1) return `${label} (${part.index}/${part.total})`;
   return label;
 }
 
-function packingStatsHeader(minScore: number): string {
-  return formatPumpStatsHeader(999, minScore, { index: 999, total: 999 });
+function packingStatsHeader(minScore: number, limit: number): string {
+  return formatPumpStatsHeader(minScore, limit, { index: 999, total: 999 });
 }
 
-export function formatPumpStatsMessages(pumps: StoredPump[], minScore: number): string[] {
+export function formatPumpStatsMessages(
+  pumps: StoredPump[],
+  minScore: number,
+  limit = 5,
+): string[] {
   if (pumps.length === 0) {
     return [`No pumps with score &gt; ${minScore} in index.`];
   }
   const blocks = sortPumpsRecentFirst(pumps).map((pump) => `\n${formatPumpBlock(pump)}`);
   return chunkPumpMessages(
-    (total, part) => formatPumpStatsHeader(total, minScore, part),
-    packingStatsHeader(minScore),
+    (_total, part) => formatPumpStatsHeader(minScore, limit, part),
+    packingStatsHeader(minScore, limit),
     pumps.length,
     blocks,
   );

@@ -131,10 +131,15 @@ async function fetchUpdates(
   return payload.result;
 }
 
+const STATS_PUMPS_LIMIT = 5;
+
 export async function handleStatsCommand(config: PumpBotConfig): Promise<number> {
   const repo = await createPumpRepository();
-  const pumps = await repo.listStoredPumps({ minScore: config.pump.minScore });
-  const messages = formatPumpStatsMessages(pumps, config.pump.minScore);
+  const pumps = await repo.listStoredPumps({
+    minScore: config.pump.minScore,
+    limit: STATS_PUMPS_LIMIT,
+  });
+  const messages = formatPumpStatsMessages(pumps, config.pump.minScore, STATS_PUMPS_LIMIT);
   const replyConfig = { ...config.telegram };
 
   for (const message of messages) {

@@ -167,7 +167,7 @@ export class PumpRepository {
     });
   }
 
-  async listStoredPumps(opts?: { minScore?: number }): Promise<StoredPump[]> {
+  async listStoredPumps(opts?: { minScore?: number; limit?: number }): Promise<StoredPump[]> {
     const args: InValue[] = [];
     let sql = `SELECT ${PUMP_COLUMNS} FROM pumps`;
     if (opts?.minScore != null) {
@@ -175,6 +175,10 @@ export class PumpRepository {
       args.push(opts.minScore);
     }
     sql += " ORDER BY start_ms DESC";
+    if (opts?.limit != null) {
+      sql += " LIMIT ?";
+      args.push(opts.limit);
+    }
 
     const result = await this.client.execute({ sql, args });
     return result.rows.map((row) => rowToStoredPump(row as Record<string, unknown>));

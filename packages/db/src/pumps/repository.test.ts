@@ -75,6 +75,26 @@ describe("PumpRepository", () => {
     expect(pumps.every((p) => p.peakScore > 80)).toBe(true);
   });
 
+  it("limits results to newest pumps", async () => {
+    await repo.upsertPumpEpisodes([
+      samplePump("P1/USDT", Date.parse("2026-06-01T10:00:00.000Z"), 90),
+      samplePump("P2/USDT", Date.parse("2026-06-02T10:00:00.000Z"), 90),
+      samplePump("P3/USDT", Date.parse("2026-06-03T10:00:00.000Z"), 90),
+      samplePump("P4/USDT", Date.parse("2026-06-04T10:00:00.000Z"), 90),
+      samplePump("P5/USDT", Date.parse("2026-06-05T10:00:00.000Z"), 90),
+      samplePump("P6/USDT", Date.parse("2026-06-06T10:00:00.000Z"), 90),
+    ]);
+
+    const pumps = await repo.listStoredPumps({ limit: 5 });
+    expect(pumps.map((p) => p.coin)).toEqual([
+      "P6/USDT",
+      "P5/USDT",
+      "P4/USDT",
+      "P3/USDT",
+      "P2/USDT",
+    ]);
+  });
+
   it("updates classification", async () => {
     const startMs = Date.parse("2026-06-05T12:00:00.000Z");
     const { newPumps } = await repo.upsertPumpEpisodes([samplePump("BTC/USDT", startMs)]);
