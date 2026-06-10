@@ -115,9 +115,10 @@ export class ScanWorkerPool {
       universePath: ".",
       indexPath: ".",
       minScore: 40,
+      minDumpScore: 40,
       liquidityThreshold: 100_000,
       exchanges: null,
-      scanParams: { minScore: 40, liquidityThreshold: 100_000, exchanges: null },
+      scanParams: { minScore: 40, minDumpScore: 40, liquidityThreshold: 100_000, exchanges: null },
       outputPath: ".",
       logPath: ".",
     };
@@ -176,6 +177,7 @@ export function buildWorkerScanJob(opts: {
   universePath: string;
   indexPath: string;
   minScore: number;
+  minDumpScore: number;
   liquidityThreshold: number;
   exchanges: Set<string> | undefined;
   scanParams: ScanParams;
@@ -192,6 +194,7 @@ export function buildWorkerScanJob(opts: {
     universePath: opts.universePath,
     indexPath: opts.indexPath,
     minScore: opts.minScore,
+    minDumpScore: opts.minDumpScore,
     liquidityThreshold: opts.liquidityThreshold,
     exchanges: opts.exchanges ? [...opts.exchanges] : null,
     scanParams: opts.scanParams,

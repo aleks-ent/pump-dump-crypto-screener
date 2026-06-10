@@ -6,6 +6,7 @@ export type FetchInterval = "1m" | "5m";
 const DEFAULT_FETCH_INTERVALS: FetchInterval[] = ["1m", "5m"];
 
 const DEFAULT_PUMP_MIN_SCORE = 80;
+const DEFAULT_PUMP_MIN_DUMP_SCORE = 55;
 
 export interface AppConfig {
   fetch?: {
@@ -15,6 +16,8 @@ export interface AppConfig {
     /** Lookback calendar days for fetch:all + scan (default 5). */
     days?: number;
     minScore?: number;
+    /** Minimum score for distribution_or_fade (dump) alerts (default 55). */
+    minDumpScore?: number;
     /** Per-coin scan result cache (reads + incremental tail rescans). Default true. */
     scanCache?: boolean;
     /** @deprecated use minScore */
@@ -60,6 +63,21 @@ export function resolvePumpMinScore(cfg: AppConfig): number {
 
 export async function loadPumpMinScore(configPath?: string): Promise<number> {
   return resolvePumpMinScore(await loadAppConfig(configPath));
+}
+
+export function resolvePumpMinDumpScore(cfg: AppConfig): number {
+  const raw = cfg.pump?.minDumpScore ?? DEFAULT_PUMP_MIN_DUMP_SCORE;
+  const minDumpScore = Number(raw);
+  if (!Number.isFinite(minDumpScore) || minDumpScore < 0 || minDumpScore > 100) {
+    throw new Error(
+      `Invalid pump.minDumpScore in config.js — must be a number between 0 and 100 (got ${String(raw)})`,
+    );
+  }
+  return minDumpScore;
+}
+
+export async function loadPumpMinDumpScore(configPath?: string): Promise<number> {
+  return resolvePumpMinDumpScore(await loadAppConfig(configPath));
 }
 
 const DEFAULT_PUMP_DAYS = 5;

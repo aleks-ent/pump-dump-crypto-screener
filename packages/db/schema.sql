@@ -17,12 +17,14 @@ CREATE TABLE IF NOT EXISTS pumps (
   event_count         INTEGER NOT NULL,
   first_seen_at       TEXT NOT NULL,
   last_seen_at        TEXT NOT NULL,
-  classification      TEXT CHECK (classification IS NULL OR classification IN ('pump', 'dump', 'none'))
+  classification      TEXT CHECK (classification IS NULL OR classification IN ('pump', 'dump', 'none')),
+  episode_type        TEXT NOT NULL DEFAULT 'pump' CHECK (episode_type IN ('pump', 'dump'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_pumps_start_ms ON pumps(start_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_pumps_peak_score ON pumps(peak_score);
 CREATE INDEX IF NOT EXISTS idx_pumps_classification ON pumps(classification);
+CREATE INDEX IF NOT EXISTS idx_pumps_episode_type ON pumps(episode_type);
 
 CREATE TABLE IF NOT EXISTS monitor_runs (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,

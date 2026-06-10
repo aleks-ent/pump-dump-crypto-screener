@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveFetchIntervals,
   resolvePumpDays,
+  resolvePumpMinDumpScore,
   resolvePumpMinScore,
   resolvePumpScanCache,
   type AppConfig,
@@ -73,6 +74,15 @@ describe("resolvePumpMinScore", () => {
   });
 });
 
+describe("resolvePumpMinDumpScore", () => {
+  it("defaults to 55 when pump config is omitted", () => {
+    expect(resolvePumpMinDumpScore({})).toBe(55);
+  });
+
+  it("reads pump.minDumpScore", () => {
+    expect(resolvePumpMinDumpScore({ pump: { minDumpScore: 60 } })).toBe(60);
+  });
+});
 describe("resolvePumpScanCache", () => {
   it("defaults to true when pump.scanCache is omitted", () => {
     expect(resolvePumpScanCache({})).toBe(true);

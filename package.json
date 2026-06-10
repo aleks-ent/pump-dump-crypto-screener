@@ -6,6 +6,8 @@
     "build": "pnpm -r run build",
     "test": "vitest run",
     "fetch:all": "pnpm --filter fetch-market-archives run all",
+    "fetch:tail": "pnpm --filter fetch-market-archives run tail",
+    "migrate:ndjson": "pnpm --filter fetch-market-archives run migrate:ndjson",
     "fetch:archives": "pnpm --filter fetch-market-archives start",
     "fetch:archives:exchange": "pnpm --filter fetch-market-archives run exchange",
     "report:coverage": "pnpm --filter fetch-market-archives run report:coverage",

@@ -63,6 +63,10 @@ export interface ArchiveRunOptions {
   updateCoverageIndex?: boolean;
   /** Ignore coverage_index.json and rebuild from disk checks. */
   rebuildCoverageIndex?: boolean;
+  /** Emit "Checking coverage N/M" lines (orchestrator only; shard workers leave unset). */
+  logCoverageProgress?: boolean;
+  /** Short label shown in coverage progress lines (e.g. "pre-fetch", "post-fetch"). */
+  coverageProgressLabel?: string;
   /** Native or canonical symbols (e.g. BTCUSDT, BTC/USDT). Empty = all coins. */
   symbols?: string[];
 }
@@ -211,8 +215,17 @@ export async function prepareArchiveRun(opts: ArchiveRunOptions): Promise<Archiv
       : loadCoverageIndex(baseDir);
 
     const logEnabled = tasks.length > 100;
-    let skipCheckDone = 0;
+    const logCoverageProgress = opts.logCoverageProgress === true;
+    const progressLabel = opts.coverageProgressLabel?.trim();
     const total = tasks.length;
+    if (logEnabled && logCoverageProgress) {
+      const labelSuffix = progressLabel ? ` (${progressLabel})` : "";
+      console.log(
+        `Scanning coverage${labelSuffix}: ${total} series — index lookup first, disk check only on cache miss`,
+      );
+    }
+    let skipCheckDone = 0;
+    let lastLoggedMilestone = 0;
     const checkLimit = pLimit(COVERAGE_CHECK_WORKERS);
 
     const classifyTask = (task: SeriesTask): boolean => {
@@ -254,12 +267,22 @@ export async function prepareArchiveRun(opts: ArchiveRunOptions): Promise<Archiv
           const inst = task.instrument;
           const satisfied = classifyTask(task);
           skipCheckDone += 1;
+          const milestone =
+            skipCheckDone === 1 || skipCheckDone === total
+              ? skipCheckDone
+              : skipCheckDone % 100 === 0
+                ? skipCheckDone
+                : 0;
           if (
             logEnabled &&
-            (skipCheckDone === 1 || skipCheckDone === total || skipCheckDone % 100 === 0)
+            logCoverageProgress &&
+            milestone > 0 &&
+            milestone !== lastLoggedMilestone
           ) {
+            lastLoggedMilestone = milestone;
+            const labelPrefix = progressLabel ? `[${progressLabel}] ` : "";
             console.log(
-              `Checking coverage ${skipCheckDone}/${total} (${inst.symbolNative}) — ${coverageIndexHits} index hits, ${coverageDiskChecks} disk checks`,
+              `${labelPrefix}Checking coverage ${skipCheckDone}/${total} ([${inst.exchange}] ${inst.symbolNative}) — ${coverageIndexHits} index hits, ${coverageDiskChecks} disk checks`,
             );
           }
           if (satisfied) skippedExisting += 1;

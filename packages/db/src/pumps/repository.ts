@@ -3,18 +3,19 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Client, InValue } from "@libsql/client";
 import type { PumpEpisode } from "@screener/pump-detector";
-import { pumpIndexKey } from "./pump-id.js";
-import type { PumpClassification, StoredPump } from "./types.js";
+import { episodeIndexKey } from "./pump-id.js";
+import type { PumpClassification, EpisodeType, StoredPump } from "./types.js";
 
 const PUMP_COLUMNS = `
   id, coin, start_ms, start_utc, end_ms, end_utc, duration_minutes, peak_score,
   dominant_phase, leading_exchange, symbol_native, instrument_type, trading_view_url,
-  confirmed, confirmed_exchanges, event_count, first_seen_at, last_seen_at, classification
+  confirmed, confirmed_exchanges, event_count, first_seen_at, last_seen_at, classification,
+  episode_type
 `.trim();
 
 const UPSERT_SQL = `
   INSERT INTO pumps (${PUMP_COLUMNS})
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     coin = excluded.coin,
     start_ms = excluded.start_ms,
@@ -31,13 +32,15 @@ const UPSERT_SQL = `
     confirmed = excluded.confirmed,
     confirmed_exchanges = excluded.confirmed_exchanges,
     event_count = excluded.event_count,
-    last_seen_at = excluded.last_seen_at
+    last_seen_at = excluded.last_seen_at,
+    episode_type = excluded.episode_type
 `.trim();
 
 function episodeToRow(episode: PumpEpisode, now: string): StoredPump {
-  const index = pumpIndexKey(episode.coin, episode.startMs);
+  const index = episodeIndexKey(episode.type, episode.coin, episode.startMs);
   return {
     index,
+    episodeType: episode.type,
     coin: episode.coin,
     startMs: episode.startMs,
     startUtc: new Date(episode.startMs).toISOString(),
@@ -69,6 +72,7 @@ function rowToStoredPump(row: Record<string, unknown>): StoredPump {
 
   return {
     index: String(row.id),
+    episodeType: row.episode_type === "dump" ? "dump" : "pump",
     coin: String(row.coin),
     startMs: Number(row.start_ms),
     startUtc: String(row.start_utc),
@@ -111,6 +115,7 @@ function pumpToArgs(pump: StoredPump): InValue[] {
     pump.firstSeenAt,
     pump.lastSeenAt,
     pump.classification,
+    pump.episodeType,
   ];
 }
 
@@ -128,14 +133,15 @@ export class PumpRepository {
 
   async upsertPumpEpisodes(
     episodes: PumpEpisode[],
-  ): Promise<{ newPumps: StoredPump[] }> {
+  ): Promise<{ newPumps: StoredPump[]; newDumps: StoredPump[] }> {
     const now = new Date().toISOString();
     const newPumps: StoredPump[] = [];
+    const newDumps: StoredPump[] = [];
 
     for (const episode of episodes) {
-      if (episode.type !== "pump") continue;
+      if (episode.type !== "pump" && episode.type !== "dump") continue;
 
-      const id = pumpIndexKey(episode.coin, episode.startMs);
+      const id = episodeIndexKey(episode.type, episode.coin, episode.startMs);
       const existing = await this.client.execute({
         sql: "SELECT id, first_seen_at FROM pumps WHERE id = ?",
         args: [id],
@@ -153,11 +159,12 @@ export class PumpRepository {
       });
 
       if (isNew) {
-        newPumps.push(stored);
+        if (episode.type === "dump") newDumps.push(stored);
+        else newPumps.push(stored);
       }
     }
 
-    return { newPumps };
+    return { newPumps, newDumps };
   }
 
   async upsertStoredPump(pump: StoredPump): Promise<void> {
@@ -167,12 +174,24 @@ export class PumpRepository {
     });
   }
 
-  async listStoredPumps(opts?: { minScore?: number; limit?: number }): Promise<StoredPump[]> {
+  async listStoredPumps(opts?: {
+    minScore?: number;
+    limit?: number;
+    episodeType?: EpisodeType;
+  }): Promise<StoredPump[]> {
     const args: InValue[] = [];
-    let sql = `SELECT ${PUMP_COLUMNS} FROM pumps`;
+    const clauses: string[] = [];
+    if (opts?.episodeType != null) {
+      clauses.push("episode_type = ?");
+      args.push(opts.episodeType);
+    }
     if (opts?.minScore != null) {
-      sql += " WHERE peak_score > ?";
+      clauses.push("peak_score > ?");
       args.push(opts.minScore);
+    }
+    let sql = `SELECT ${PUMP_COLUMNS} FROM pumps`;
+    if (clauses.length > 0) {
+      sql += ` WHERE ${clauses.join(" AND ")}`;
     }
     sql += " ORDER BY start_ms DESC";
     if (opts?.limit != null) {
@@ -232,8 +251,30 @@ export function splitSqlStatements(sql: string): string[] {
 
 export async function applySchema(client: Client, schemaPath?: string): Promise<void> {
   const path = schemaPath ?? defaultSchemaPath();
-  const sql = readFileSync(path, "utf-8");
-  for (const statement of splitSqlStatements(sql)) {
-    await client.execute(statement);
+  const statements = splitSqlStatements(readFileSync(path, "utf-8"));
+
+  for (const statement of statements) {
+    if (/^CREATE TABLE/i.test(statement)) {
+      await client.execute(statement);
+    }
+  }
+
+  // Legacy DBs have pumps without episode_type; indexes must run after this.
+  await migratePumpsEpisodeType(client);
+
+  for (const statement of statements) {
+    if (!/^CREATE TABLE/i.test(statement)) {
+      await client.execute(statement);
+    }
+  }
+}
+
+async function migratePumpsEpisodeType(client: Client): Promise<void> {
+  try {
+    await client.execute("SELECT episode_type FROM pumps LIMIT 1");
+  } catch {
+    await client.execute(
+      "ALTER TABLE pumps ADD COLUMN episode_type TEXT NOT NULL DEFAULT 'pump'",
+    );
   }
 }

@@ -35,6 +35,7 @@ function writeNdjson(
     `instrument_type=${inst.instrumentType}`,
     `interval=${interval}`,
     `date=${day}`,
+    `symbol=${inst.symbolNative}`,
     "data.ndjson",
   );
   mkdirSync(join(path, ".."), { recursive: true });

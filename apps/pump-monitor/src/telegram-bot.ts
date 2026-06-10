@@ -15,6 +15,7 @@ import {
   editMessageText,
   formatClassifiedPumpMessage,
   formatMonitorRunsMessage,
+  formatEpisodeStatsMessages,
   formatPumpStatsMessages,
   buildCommandReplyKeyboard,
   sendTelegramMessage,
@@ -23,6 +24,7 @@ import {
 
 export interface PumpConfig {
   minScore: number;
+  minDumpScore: number;
 }
 
 export interface PumpBotConfig {
@@ -61,6 +63,7 @@ export async function loadPumpBotConfig(): Promise<PumpBotConfig | null> {
     telegramChatId?: string;
     pump?: {
       minScore?: number;
+      minDumpScore?: number;
       statsMinScore?: number;
     };
   };
@@ -70,9 +73,10 @@ export async function loadPumpBotConfig(): Promise<PumpBotConfig | null> {
 
   const pumpCfg = cfg.pump ?? {};
   const minScore = Number(pumpCfg.minScore ?? pumpCfg.statsMinScore ?? 80);
+  const minDumpScore = Number(pumpCfg.minDumpScore ?? 55);
   return {
     telegram: { botToken, chatId },
-    pump: { minScore },
+    pump: { minScore, minDumpScore },
   };
 }
 
@@ -131,15 +135,27 @@ async function fetchUpdates(
   return payload.result;
 }
 
-const STATS_PUMPS_LIMIT = 5;
+const STATS_EPISODES_LIMIT = 5;
 
 export async function handleStatsCommand(config: PumpBotConfig): Promise<number> {
   const repo = await createPumpRepository();
   const pumps = await repo.listStoredPumps({
     minScore: config.pump.minScore,
-    limit: STATS_PUMPS_LIMIT,
+    limit: STATS_EPISODES_LIMIT,
+    episodeType: "pump",
   });
-  const messages = formatPumpStatsMessages(pumps, config.pump.minScore, STATS_PUMPS_LIMIT);
+  const dumps = await repo.listStoredPumps({
+    minScore: config.pump.minDumpScore,
+    limit: STATS_EPISODES_LIMIT,
+    episodeType: "dump",
+  });
+  const messages = formatEpisodeStatsMessages(
+    pumps,
+    dumps,
+    config.pump.minScore,
+    config.pump.minDumpScore,
+    STATS_EPISODES_LIMIT,
+  );
   const replyConfig = { ...config.telegram };
 
   for (const message of messages) {

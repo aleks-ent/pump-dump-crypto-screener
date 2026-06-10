@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import type { PumpEpisode } from "@screener/pump-detector";
 import { createMemoryDbClient } from "../client.js";
 import { pumpIndexKey } from "./pump-id.js";
-import { PumpRepository } from "./repository.js";
+import { PumpRepository, applySchema } from "./repository.js";
 
 function samplePump(coin: string, startMs: number, peakScore = 72): PumpEpisode {
   return {
@@ -32,6 +32,44 @@ describe("pumpIndexKey", () => {
   });
 });
 
+describe("applySchema", () => {
+  it("migrates legacy pumps table missing episode_type", async () => {
+    const client = createMemoryDbClient();
+    await client.execute(`
+      CREATE TABLE pumps (
+        id                  TEXT PRIMARY KEY NOT NULL,
+        coin                TEXT NOT NULL,
+        start_ms            INTEGER NOT NULL,
+        start_utc           TEXT NOT NULL,
+        end_ms              INTEGER NOT NULL,
+        end_utc             TEXT NOT NULL,
+        duration_minutes    INTEGER NOT NULL,
+        peak_score          REAL NOT NULL,
+        dominant_phase      TEXT NOT NULL,
+        leading_exchange    TEXT NOT NULL,
+        symbol_native       TEXT NOT NULL,
+        instrument_type     TEXT NOT NULL,
+        trading_view_url    TEXT NOT NULL,
+        confirmed           INTEGER NOT NULL DEFAULT 0,
+        confirmed_exchanges TEXT NOT NULL,
+        event_count         INTEGER NOT NULL,
+        first_seen_at       TEXT NOT NULL,
+        last_seen_at        TEXT NOT NULL,
+        classification      TEXT
+      )
+    `);
+
+    await applySchema(client);
+
+    const repo = new PumpRepository(client);
+    const { newPumps } = await repo.upsertPumpEpisodes([
+      samplePump("LEGACY/USDT", Date.parse("2026-06-05T12:00:00.000Z")),
+    ]);
+    expect(newPumps).toHaveLength(1);
+    expect(newPumps[0]!.episodeType).toBe("pump");
+  });
+});
+
 describe("PumpRepository", () => {
   let repo: PumpRepository;
 
@@ -52,15 +90,22 @@ describe("PumpRepository", () => {
     expect(await repo.countPumps()).toBe(1);
   });
 
-  it("ignores dump episodes", async () => {
-    const { newPumps } = await repo.upsertPumpEpisodes([
+  it("stores dump episodes separately from pumps", async () => {
+    const startMs = Date.parse("2026-06-05T13:00:00.000Z");
+    const { newPumps, newDumps } = await repo.upsertPumpEpisodes([
       {
-        ...samplePump("ETH/USDT", Date.parse("2026-06-05T13:00:00.000Z")),
+        ...samplePump("ETH/USDT", startMs),
         type: "dump",
+        dominantPhase: "distribution_or_fade",
       },
     ]);
     expect(newPumps).toHaveLength(0);
-    expect(await repo.countPumps()).toBe(0);
+    expect(newDumps).toHaveLength(1);
+    expect(await repo.countPumps()).toBe(1);
+
+    const dumps = await repo.listStoredPumps({ episodeType: "dump" });
+    expect(dumps).toHaveLength(1);
+    expect(dumps[0]!.episodeType).toBe("dump");
   });
 
   it("sorts newest first and filters by score", async () => {

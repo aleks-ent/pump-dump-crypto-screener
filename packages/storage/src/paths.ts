@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Instrument } from "@screener/core";
-import { INTERVAL_TO_MS } from "./market-storage.js";
+import { INTERVAL_TO_MS } from "./intervals.js";
 
 /** UTC calendar days overlapping [startMs, endMs) (end exclusive at instants). */
 export function utcDaysInWindow(startMs: number, endMs: number): string[] {
@@ -23,6 +23,7 @@ export function utcDaysInWindow(startMs: number, endMs: number): string[] {
   return days;
 }
 
+/** Per-series REST fallback NDJSON (one symbol per file). */
 export function rawNdjsonPath(
   baseDir: string,
   inst: Pick<Instrument, "exchange" | "instrumentType" | "symbolNative">,
@@ -36,6 +37,7 @@ export function rawNdjsonPath(
     `instrument_type=${inst.instrumentType}`,
     `interval=${interval}`,
     `date=${day}`,
+    `symbol=${inst.symbolNative}`,
     "data.ndjson",
   );
 }
@@ -48,29 +50,7 @@ export function isNonEmptyFile(path: string): boolean {
   }
 }
 
-function ndjsonRowMatchesInstrument(
-  row: Record<string, unknown>,
-  inst: Pick<Instrument, "exchange" | "instrumentType" | "symbolNative">,
-): boolean {
-  if (
-    row.exchange != null &&
-    String(row.exchange).toLowerCase() !== inst.exchange.toLowerCase()
-  ) {
-    return false;
-  }
-  if (row.instrument_type != null && String(row.instrument_type) !== inst.instrumentType) {
-    return false;
-  }
-  if (row.symbol_native != null && String(row.symbol_native) !== inst.symbolNative) {
-    return false;
-  }
-  return true;
-}
-
-function readLatestOpenTimeMsFromFile(
-  path: string,
-  inst?: Pick<Instrument, "exchange" | "instrumentType" | "symbolNative">,
-): number | null {
+function readLatestOpenTimeMsFromFile(path: string): number | null {
   if (!isNonEmptyFile(path)) return null;
   try {
     const content = readFileSync(path, "utf-8");
@@ -79,7 +59,6 @@ function readLatestOpenTimeMsFromFile(
     let latest: number | null = null;
     for (const line of lines) {
       const row = JSON.parse(line) as Record<string, unknown>;
-      if (inst != null && !ndjsonRowMatchesInstrument(row, inst)) continue;
       const openTimeMs = row.open_time_ms;
       if (typeof openTimeMs !== "number") continue;
       if (latest == null || openTimeMs > latest) latest = openTimeMs;
@@ -95,12 +74,28 @@ export function readLatestOpenTimeMs(path: string): number | null {
   return readLatestOpenTimeMsFromFile(path);
 }
 
-/** Latest open time for a specific instrument in a multi-symbol day NDJSON file. */
-export function readLatestOpenTimeMsForInstrument(
-  path: string,
+/** Read per-symbol day NDJSON text, or null when missing. */
+export function readNdjsonDayText(
+  baseDir: string,
   inst: Pick<Instrument, "exchange" | "instrumentType" | "symbolNative">,
+  interval: string,
+  day: string,
+): string | null {
+  try {
+    return readFileSync(rawNdjsonPath(baseDir, inst, interval, day), "utf-8");
+  } catch {
+    return null;
+  }
+}
+
+/** Latest open time for a series on disk (per-symbol file). */
+export function readLatestOpenTimeMsForInstrument(
+  fallbackDir: string,
+  inst: Pick<Instrument, "exchange" | "instrumentType" | "symbolNative">,
+  interval: string,
+  day: string,
 ): number | null {
-  return readLatestOpenTimeMsFromFile(path, inst);
+  return readLatestOpenTimeMsFromFile(rawNdjsonPath(fallbackDir, inst, interval, day));
 }
 
 /** @deprecated Use {@link readLatestOpenTimeMs}. */
@@ -124,8 +119,7 @@ export function resumeFallbackStartMs(
     const sliceEnd = Math.min(rangeEndMs, dayEnd);
     if (sliceStart >= sliceEnd) continue;
 
-    const path = rawNdjsonPath(fallbackDir, inst, interval, day);
-    const latest = readLatestOpenTimeMsForInstrument(path, inst);
+    const latest = readLatestOpenTimeMsForInstrument(fallbackDir, inst, interval, day);
     const required = requiredLastOpenMsForSlice(sliceEnd, intervalMs);
 
     if (latest == null || latest < required) {
@@ -155,9 +149,8 @@ export function isFallbackSeriesOnDisk(
   const checkCoverage = intervalMs != null;
 
   for (const day of days) {
-    const path = rawNdjsonPath(fallbackDir, inst, interval, day);
     if (!checkCoverage) {
-      const latest = readLatestOpenTimeMsForInstrument(path, inst);
+      const latest = readLatestOpenTimeMsForInstrument(fallbackDir, inst, interval, day);
       if (latest == null) return false;
       continue;
     }
@@ -169,7 +162,7 @@ export function isFallbackSeriesOnDisk(
     if (sliceStart >= sliceEnd) continue;
 
     const requiredLast = requiredLastOpenMsForSlice(sliceEnd, intervalMs);
-    const latestOpen = readLatestOpenTimeMsForInstrument(path, inst);
+    const latestOpen = readLatestOpenTimeMsForInstrument(fallbackDir, inst, interval, day);
     if (latestOpen == null || latestOpen < requiredLast) return false;
   }
   return true;

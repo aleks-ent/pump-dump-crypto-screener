@@ -1,6 +1,5 @@
-import { readFileSync } from "node:fs";
 import type { Instrument } from "@screener/core";
-import { rawNdjsonPath, utcDaysInWindow } from "@screener/storage";
+import { readNdjsonDayText, utcDaysInWindow } from "@screener/storage";
 import type { Candle, SeriesQualityFlags, Timeframe } from "../types.js";
 import { type NdjsonRow, rowMatchesInstrument, rowToCandle } from "./ndjson-row.js";
 
@@ -22,13 +21,8 @@ export function loadCandleSeriesStats(
   const times = new Set<number>();
 
   for (const day of days) {
-    const path = rawNdjsonPath(dataRoot, inst, interval, day);
-    let text: string;
-    try {
-      text = readFileSync(path, "utf-8");
-    } catch {
-      continue;
-    }
+    const text = readNdjsonDayText(dataRoot, inst, interval, day);
+    if (text == null) continue;
     for (const line of text.split("\n")) {
       const trimmed = line.trim();
       if (!trimmed) continue;
@@ -72,13 +66,8 @@ export function loadCandleSeries(
   let duplicateBars = 0;
 
   for (const day of days) {
-    const path = rawNdjsonPath(dataRoot, inst, interval, day);
-    let text: string;
-    try {
-      text = readFileSync(path, "utf-8");
-    } catch {
-      continue;
-    }
+    const text = readNdjsonDayText(dataRoot, inst, interval, day);
+    if (text == null) continue;
     for (const line of text.split("\n")) {
       const trimmed = line.trim();
       if (!trimmed) continue;

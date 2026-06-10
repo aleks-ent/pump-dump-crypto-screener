@@ -3,6 +3,7 @@ import { loadSeries } from "./load/series.js";
 import { evaluateFeatures } from "./features/evaluate.js";
 import { computeScore, confidenceFromScore } from "./detect/score.js";
 import { classifyPhase } from "./detect/phases.js";
+import { phaseMeetsMinScore } from "./detect/threshold.js";
 import { filterPumpCandidatesByMinConsecutiveBars } from "./detect/run-length.js";
 import { buildReasons } from "./detect/reasons.js";
 import {
@@ -85,6 +86,7 @@ export function scanInstrumentGroup(
 ): PumpCandidate[] {
   const liquidityThreshold = opts.liquidityThreshold ?? 100_000;
   const minScore = opts.minScore ?? 40;
+  const minDumpScore = opts.minDumpScore ?? minScore;
   const hits: Array<{ barIndex: number; candidate: PumpCandidate }> = [];
   const useArchives = Boolean(opts.archivesDir);
 
@@ -144,7 +146,7 @@ export function scanInstrumentGroup(
       const phase = classifyPhase(f, score, loaded.quality.badData, lowLiquidity);
 
       if (!REPORTABLE_PHASES.has(phase)) continue;
-      if (phase === "ignore" || score < minScore) continue;
+      if (phase === "ignore" || !phaseMeetsMinScore(phase, score, minScore, minDumpScore)) continue;
 
       hits.push({
         barIndex: i,

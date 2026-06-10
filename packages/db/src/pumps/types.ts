@@ -1,7 +1,10 @@
 export type PumpClassification = "pump" | "dump" | "none";
 
+export type EpisodeType = "pump" | "dump";
+
 export interface StoredPump {
   index: string;
+  episodeType: EpisodeType;
   coin: string;
   startMs: number;
   startUtc: string;

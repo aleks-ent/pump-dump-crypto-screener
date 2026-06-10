@@ -1,11 +1,10 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { CandleRecord, Instrument } from "@screener/core";
+import { INTERVAL_TO_MS } from "./intervals.js";
+import { rawNdjsonPath } from "./paths.js";
 
-export const INTERVAL_TO_MS: Record<string, number> = {
-  "1m": 60_000,
-  "5m": 300_000,
-};
+export { INTERVAL_TO_MS } from "./intervals.js";
 
 function isoUtcNow(): string {
   return new Date().toISOString();
@@ -26,7 +25,25 @@ function appendJsonl(path: string, rows: Record<string, unknown>[]): void {
   }
 }
 
-/** Open times already stored in a day NDJSON file. */
+/** Keys `${exchange}|${instrument_type}|${symbol_native}|${open_time_ms}` already on disk. */
+export function readExistingSeriesKeys(path: string): Set<string> {
+  const existing = new Set<string>();
+  if (!existsSync(path)) return existing;
+  try {
+    const content = readFileSync(path, "utf-8");
+    for (const line of content.trimEnd().split("\n")) {
+      if (!line) continue;
+      const row = JSON.parse(line) as Record<string, unknown>;
+      const key = seriesOpenTimeKey(row);
+      if (key) existing.add(key);
+    }
+  } catch {
+    /* treat unreadable file as empty */
+  }
+  return existing;
+}
+
+/** @deprecated Prefer {@link readExistingSeriesKeys}. Per-symbol files may omit exchange fields. */
 export function readExistingOpenTimes(path: string): Set<number> {
   const existing = new Set<number>();
   if (!existsSync(path)) return existing;
@@ -43,14 +60,23 @@ export function readExistingOpenTimes(path: string): Set<number> {
   return existing;
 }
 
-/** Append rows, skipping any whose `open_time_ms` is already on disk. Returns rows written. */
+function seriesOpenTimeKey(row: Record<string, unknown>): string | null {
+  const openTime = row.open_time_ms;
+  if (typeof openTime !== "number") return null;
+  const sym = row.symbol_native != null ? String(row.symbol_native) : "";
+  const ex = row.exchange != null ? String(row.exchange).toLowerCase() : "";
+  const it = row.instrument_type != null ? String(row.instrument_type) : "";
+  return `${ex}|${it}|${sym}|${openTime}`;
+}
+
+/** Append rows, skipping duplicates for the same open time. Returns rows written. */
 function appendJsonlDeduped(path: string, rows: Record<string, unknown>[]): number {
-  const existing = readExistingOpenTimes(path);
+  const existing = readExistingSeriesKeys(path);
   let written = 0;
   for (const row of rows) {
-    const openTime = row.open_time_ms;
-    if (typeof openTime !== "number" || existing.has(openTime)) continue;
-    existing.add(openTime);
+    const key = seriesOpenTimeKey(row);
+    if (key == null || existing.has(key)) continue;
+    existing.add(key);
     ensureParent(path);
     appendFileSync(path, `${JSON.stringify(row)}\n`, "utf-8");
     written += 1;
@@ -68,14 +94,15 @@ export function writeRawRecords(
   const buckets = new Map<string, Record<string, unknown>[]>();
   for (const rec of records) {
     const day = utcDayFromMs(rec.openTimeMs);
-    const path = join(
+    const path = rawNdjsonPath(
       baseDir,
-      "raw",
-      `exchange=${rec.exchange}`,
-      `instrument_type=${rec.instrumentType}`,
-      `interval=${rec.interval}`,
-      `date=${day}`,
-      "data.ndjson",
+      {
+        exchange: rec.exchange,
+        instrumentType: rec.instrumentType,
+        symbolNative: rec.symbolNative,
+      },
+      rec.interval,
+      day,
     );
     const row = {
       exchange: rec.exchange,
@@ -117,6 +144,7 @@ export function writeNormalizedRecords(
       `instrument_type=${rec.instrumentType}`,
       `interval=${rec.interval}`,
       `date=${day}`,
+      `symbol=${rec.symbolNative}`,
       "data.ndjson",
     );
     const row = {

@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import {
   archiveCoverageEndMs,
   archiveCoverageStartMs,
@@ -8,7 +7,7 @@ import {
   supportsArchives,
 } from "@screener/archive";
 import type { Instrument } from "@screener/core";
-import { isNonEmptyFile, rawNdjsonPath, utcDaysInWindow } from "@screener/storage";
+import { isNonEmptyFile, readNdjsonDayText, utcDaysInWindow } from "@screener/storage";
 import type { Timeframe } from "./types.js";
 
 const INTERVAL_MS: Record<Timeframe, number> = { "1m": 60_000, "5m": 300_000 };
@@ -143,13 +142,8 @@ function ndjsonStatsForSlice(
   for (const root of roots) {
     const days = utcDaysInWindow(sliceStartMs, sliceEndMs);
     for (const day of days) {
-      const path = rawNdjsonPath(root, inst, interval, day);
-      let text: string;
-      try {
-        text = readFileSync(path, "utf-8");
-      } catch {
-        continue;
-      }
+      const text = readNdjsonDayText(root, inst, interval, day);
+      if (text == null) continue;
       for (const line of text.split("\n")) {
         const trimmed = line.trim();
         if (!trimmed) continue;

@@ -200,6 +200,7 @@ async function main(): Promise<void> {
   const liquidityThreshold = Number(opts.liquidityThreshold);
   const scanParams: ScanParams = {
     minScore,
+    minDumpScore: minScore,
     liquidityThreshold,
     exchanges: null,
   };
@@ -302,6 +303,7 @@ async function main(): Promise<void> {
     const skip = shouldSkipScan(priorCache, {
       detectorVersion: priorCache.detectorVersion,
       windowStartMs: startMs,
+      endMs,
       scanParams,
       dataFingerprint: fp,
     });
@@ -342,6 +344,7 @@ async function main(): Promise<void> {
         shouldSkipScan(cache, {
           detectorVersion: cache.detectorVersion,
           windowStartMs: startMs,
+          endMs,
           scanParams,
           dataFingerprint: fp,
         })

@@ -113,29 +113,41 @@ function fmtDuration(minutes: number): string {
 
 const TELEGRAM_MESSAGE_LIMIT = 4096;
 
+/** Max new episodes to alert individually; above this, send one summary message. */
+export const TELEGRAM_ALERT_DETAIL_LIMIT = 5;
+
 function sortPumpsRecentFirst(pumps: StoredPump[]): StoredPump[] {
   return pumps.slice().sort((a, b) => b.startMs - a.startMs || b.peakScore - a.peakScore);
 }
 
-export function formatPumpBlock(pump: StoredPump): string {
+export function formatEpisodeBlock(episode: StoredPump): string {
   const exchanges =
-    pump.confirmedExchanges.length > 0
-      ? pump.confirmedExchanges.join(", ")
-      : pump.leadingExchange;
+    episode.confirmedExchanges.length > 0
+      ? episode.confirmedExchanges.join(", ")
+      : episode.leadingExchange;
   const lines = [
-    `<b>${escapeHtml(pump.coin)}</b> · peak ${pump.peakScore}`,
-    `${fmtUtc(pump.startMs)} → ${fmtUtc(pump.endMs)} UTC (${fmtDuration(pump.durationMinutes)})`,
+    `<b>${escapeHtml(episode.coin)}</b> · peak ${episode.peakScore}`,
+    `${fmtUtc(episode.startMs)} → ${fmtUtc(episode.endMs)} UTC (${fmtDuration(episode.durationMinutes)})`,
     `Exchange: ${escapeHtml(exchanges)}`,
-    `<a href="${escapeHtml(pump.tradingViewUrl)}">TradingView chart</a>`,
+    `<a href="${escapeHtml(episode.tradingViewUrl)}">TradingView chart</a>`,
   ];
-  if (pump.classification) {
-    lines.push(`Classification: ${classificationLabel(pump.classification)}`);
+  if (episode.classification) {
+    lines.push(`Classification: ${classificationLabel(episode.classification)}`);
   }
   return lines.join("\n");
 }
 
+/** @deprecated Use {@link formatEpisodeBlock}. */
+export function formatPumpBlock(pump: StoredPump): string {
+  return formatEpisodeBlock(pump);
+}
+
 export function formatPumpAlertMessage(pump: StoredPump): string {
-  return ["<b>New pump detected</b>", formatPumpBlock(pump)].join("\n");
+  return ["<b>New pump detected</b>", formatEpisodeBlock(pump)].join("\n");
+}
+
+export function formatDumpAlertMessage(dump: StoredPump): string {
+  return ["<b>New dump detected</b>", formatEpisodeBlock(dump)].join("\n");
 }
 
 function formatPumpStatsHeader(
@@ -148,8 +160,34 @@ function formatPumpStatsHeader(
   return label;
 }
 
-function packingStatsHeader(minScore: number, limit: number): string {
-  return formatPumpStatsHeader(minScore, limit, { index: 999, total: 999 });
+function formatDumpStatsHeader(
+  minScore: number,
+  limit: number,
+  part?: { index: number; total: number },
+): string {
+  const label = `<b>Dumps</b> · score &gt; ${minScore} · last ${limit}`;
+  if (part && part.total > 1) return `${label} (${part.index}/${part.total})`;
+  return label;
+}
+
+function formatEpisodeStatsSection(
+  episodes: StoredPump[],
+  headerFor: (minScore: number, limit: number, part?: { index: number; total: number }) => string,
+  packingHeader: (minScore: number, limit: number) => string,
+  emptyMessage: (minScore: number) => string,
+  minScore: number,
+  limit: number,
+): string[] {
+  if (episodes.length === 0) {
+    return [emptyMessage(minScore)];
+  }
+  const blocks = sortPumpsRecentFirst(episodes).map((ep) => `\n${formatEpisodeBlock(ep)}`);
+  return chunkEpisodeMessages(
+    (_total, part) => headerFor(minScore, limit, part),
+    packingHeader(minScore, limit),
+    episodes.length,
+    blocks,
+  );
 }
 
 export function formatPumpStatsMessages(
@@ -157,19 +195,50 @@ export function formatPumpStatsMessages(
   minScore: number,
   limit = 5,
 ): string[] {
-  if (pumps.length === 0) {
-    return [`No pumps with score &gt; ${minScore} in index.`];
-  }
-  const blocks = sortPumpsRecentFirst(pumps).map((pump) => `\n${formatPumpBlock(pump)}`);
-  return chunkPumpMessages(
-    (_total, part) => formatPumpStatsHeader(minScore, limit, part),
-    packingStatsHeader(minScore, limit),
-    pumps.length,
-    blocks,
+  return formatEpisodeStatsSection(
+    pumps,
+    formatPumpStatsHeader,
+    (min, lim) => formatPumpStatsHeader(min, lim, { index: 999, total: 999 }),
+    (min) => `No pumps with score &gt; ${min} in index.`,
+    minScore,
+    limit,
   );
 }
 
-function chunkPumpMessages(
+export function formatDumpStatsMessages(
+  dumps: StoredPump[],
+  minScore: number,
+  limit = 5,
+): string[] {
+  return formatEpisodeStatsSection(
+    dumps,
+    formatDumpStatsHeader,
+    (min, lim) => formatDumpStatsHeader(min, lim, { index: 999, total: 999 }),
+    (min) => `No dumps with score &gt; ${min} in index.`,
+    minScore,
+    limit,
+  );
+}
+
+export function formatEpisodeStatsMessages(
+  pumps: StoredPump[],
+  dumps: StoredPump[],
+  minPumpScore: number,
+  minDumpScore: number,
+  limit = 5,
+): string[] {
+  if (pumps.length === 0 && dumps.length === 0) {
+    return [
+      `No pumps (&gt; ${minPumpScore}) or dumps (&gt; ${minDumpScore}) in index.`,
+    ];
+  }
+  return [
+    ...formatPumpStatsMessages(pumps, minPumpScore, limit),
+    ...formatDumpStatsMessages(dumps, minDumpScore, limit),
+  ];
+}
+
+function chunkEpisodeMessages(
   headerForCount: (total: number, part?: { index: number; total: number }) => string,
   packingHeaderText: string,
   total: number,
@@ -238,6 +307,15 @@ export async function sendPumpAlertMessage(
   });
 }
 
+export async function sendDumpAlertMessage(
+  config: TelegramConfig,
+  dump: StoredPump,
+): Promise<void> {
+  await sendTelegramMessage(config, formatDumpAlertMessage(dump), {
+    replyMarkup: buildClassificationKeyboard(dump.index),
+  });
+}
+
 export async function sendPumpAlert(
   config: TelegramConfig,
   pumps: StoredPump[],
@@ -246,6 +324,48 @@ export async function sendPumpAlert(
     await sendPumpAlertMessage(config, pump);
   }
   return pumps.length;
+}
+
+export function formatEpisodeOverflowAlert(
+  pumpCount: number,
+  dumpCount: number,
+  limit: number = TELEGRAM_ALERT_DETAIL_LIMIT,
+): string {
+  const total = pumpCount + dumpCount;
+  return [
+    "<b>Many new episodes detected</b>",
+    `Pumps: ${pumpCount} · Dumps: ${dumpCount} (${total} total)`,
+    `Did not send individual alerts because the count exceeds ${limit}.`,
+    "Use /stats to browse the latest stored episodes.",
+  ].join("\n");
+}
+
+export async function sendEpisodeAlerts(
+  config: TelegramConfig,
+  pumps: StoredPump[],
+  dumps: StoredPump[],
+  opts?: { detailLimit?: number },
+): Promise<number> {
+  const limit = opts?.detailLimit ?? TELEGRAM_ALERT_DETAIL_LIMIT;
+  const total = pumps.length + dumps.length;
+  if (total > limit) {
+    await sendTelegramMessage(
+      config,
+      formatEpisodeOverflowAlert(pumps.length, dumps.length, limit),
+    );
+    return 1;
+  }
+
+  let count = 0;
+  for (const pump of pumps) {
+    await sendPumpAlertMessage(config, pump);
+    count += 1;
+  }
+  for (const dump of dumps) {
+    await sendDumpAlertMessage(config, dump);
+    count += 1;
+  }
+  return count;
 }
 
 export async function answerCallbackQuery(
@@ -276,12 +396,18 @@ export async function editMessageText(
   });
 }
 
+export function formatClassifiedEpisodeMessage(
+  episode: StoredPump,
+  classification: PumpClassification,
+): string {
+  const title = episode.episodeType === "dump" ? "New dump detected" : "New pump detected";
+  return [ `<b>${title}</b>`, formatEpisodeBlock({ ...episode, classification }) ].join("\n");
+}
+
+/** @deprecated Use {@link formatClassifiedEpisodeMessage}. */
 export function formatClassifiedPumpMessage(
   pump: StoredPump,
   classification: PumpClassification,
 ): string {
-  return [
-    "<b>New pump detected</b>",
-    formatPumpBlock({ ...pump, classification }),
-  ].join("\n");
+  return formatClassifiedEpisodeMessage(pump, classification);
 }

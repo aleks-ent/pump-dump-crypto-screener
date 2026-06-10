@@ -18,6 +18,7 @@ import {
 
 const scanParams: ScanParams = {
   minScore: 40,
+  minDumpScore: 55,
   liquidityThreshold: 100_000,
   exchanges: ["binance"],
 };
@@ -58,9 +59,11 @@ function makeCache(overrides: Partial<CoinScanCache> = {}): CoinScanCache {
 }
 
 describe("shouldSkipScan", () => {
+  const endMs = 1_700_086_400_000;
   const baseOpts = {
     detectorVersion: PUMP_DETECTOR_VERSION,
     windowStartMs: 1_700_000_000_000,
+    endMs,
     scanParams,
     dataFingerprint: fingerprint,
   };
@@ -72,6 +75,16 @@ describe("shouldSkipScan", () => {
   it("returns true when all cache keys match", () => {
     const cache = makeCache();
     expect(shouldSkipScan(cache, baseOpts)).toBe(true);
+  });
+
+  it("invalidates when endMs moved past cached windowEndMs", () => {
+    const cache = makeCache({ windowEndMs: endMs - 600_000 });
+    expect(shouldSkipScan(cache, { ...baseOpts, endMs })).toBe(false);
+  });
+
+  it("returns true when endMs matches cached windowEndMs", () => {
+    const cache = makeCache({ windowEndMs: endMs });
+    expect(shouldSkipScan(cache, { ...baseOpts, endMs })).toBe(true);
   });
 
   it("invalidates on detector version mismatch", () => {
@@ -316,6 +329,7 @@ describe("computeCoinDataFingerprint", () => {
         "instrument_type=spot",
         "interval=5m",
         `date=${day}`,
+        "symbol=BTCUSDT",
         "data.ndjson",
       );
       mkdirSync(dirname(ndjsonPath), { recursive: true });

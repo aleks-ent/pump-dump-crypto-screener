@@ -38,6 +38,7 @@ export interface ScanOneCoinOptions {
   fallbackDir: string;
   extractedRoot: string;
   minScore: number;
+  minDumpScore: number;
   liquidityThreshold: number;
   exchanges?: Set<string>;
   scanParams: ScanParams;
@@ -57,6 +58,7 @@ export function scanOneCoin(opts: ScanOneCoinOptions): CoinWorkerResult {
     fallbackDir,
     extractedRoot,
     minScore,
+    minDumpScore,
     liquidityThreshold,
     exchanges,
     scanParams,
@@ -190,6 +192,7 @@ export function scanOneCoin(opts: ScanOneCoinOptions): CoinWorkerResult {
     useArchives,
     onLog,
     minScore,
+    minDumpScore,
     liquidityThreshold,
     exchanges,
     incremental: tailRescan

@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { Command } from "commander";
 import { resolveRepoPath } from "@screener/core";
 import { seriesKey, writeArchiveIncompleteReport } from "@screener/storage";
+import { migrateLegacySharedNdjson } from "@screener/storage";
 import { prepareArchiveRun, symbolCliArgs } from "./run-context.js";
 import {
   buildReasonMap,
@@ -115,6 +116,14 @@ async function main(): Promise<void> {
 
   const exchanges = [...ALL_EXCHANGES];
 
+  const fallbackDir = `${output.replace(/\/$/, "")}/api_fallback`;
+  const migrated = await migrateLegacySharedNdjson(fallbackDir);
+  if (migrated.filesSplit > 0) {
+    log(
+      `Migrated ${migrated.filesSplit} legacy shared day file(s) to per-symbol layout (${migrated.rowsWritten} rows)`,
+    );
+  }
+
   const ctx = await prepareArchiveRun({
     universe,
     start: opts.start,
@@ -126,6 +135,8 @@ async function main(): Promise<void> {
     defaultDays: days,
     skipExisting: true,
     updateCoverageIndex: true,
+    logCoverageProgress: true,
+    coverageProgressLabel: "pre-fetch",
     rebuildCoverageIndex: opts.rebuildCoverageIndex,
     symbols,
   });
@@ -213,21 +224,32 @@ async function main(): Promise<void> {
     );
   }
 
-  const after = await prepareArchiveRun({
-    universe,
-    start: startIso,
-    end: endIso,
-    exchanges: [...exchanges],
-    quoteCurrencies,
-    output,
-    config: opts.config,
-    defaultDays: days,
-    skipDiscovery: true,
-    skipExisting: true,
-    updateCoverageIndex: true,
-    rebuildCoverageIndex: opts.rebuildCoverageIndex,
-    symbols,
-  });
+  const after =
+    exchangesToRun.length === 0
+      ? ctx
+      : await prepareArchiveRun({
+          universe,
+          start: startIso,
+          end: endIso,
+          exchanges: [...exchanges],
+          quoteCurrencies,
+          output,
+          config: opts.config,
+          defaultDays: days,
+          skipDiscovery: true,
+          skipExisting: true,
+          updateCoverageIndex: true,
+          logCoverageProgress: false,
+          rebuildCoverageIndex: opts.rebuildCoverageIndex,
+          symbols,
+        });
+
+  if (exchangesToRun.length > 0) {
+    log(
+      `Post-fetch verify: ${after.skippedExisting}/${after.tasks.length} satisfied` +
+        ` (${after.coverageIndexHits} index hits, ${after.coverageDiskChecks} disk checks)`,
+    );
+  }
 
   const stillPending = after.pending.filter((t) =>
     attemptedKeys.has(seriesKey(t.instrument, t.interval)),

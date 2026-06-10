@@ -133,6 +133,8 @@ export interface ScanOptions {
   onLog?: (message: string) => void;
   liquidityThreshold?: number;
   minScore?: number;
+  /** Minimum score for distribution_or_fade (dump) hits; defaults to minScore. */
+  minDumpScore?: number;
   exchanges?: Set<string>;
   marketCategory?: "spot" | "futures" | null;
   /** Reuse cached candidates before the tail warmup zone; rescan only the last N bars. */

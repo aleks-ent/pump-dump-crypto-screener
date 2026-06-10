@@ -1,9 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import {
   isFallbackSeriesOnDisk,
+  rawNdjsonPath,
   readLatestOpenTimeMs,
   requiredLastOpenMsForSlice,
   resumeFallbackStartMs,
@@ -29,8 +29,18 @@ describe("paths", () => {
     expect(utcDaysInWindow(start, end)).toEqual(["2026-06-05", "2026-06-06"]);
   });
 
-  it("rejects multi-symbol day file when instrument rows are missing", () => {
-    const base = mkdtempSync(join(tmpdir(), "fb-mix-"));
+  it("rawNdjsonPath includes symbol partition", () => {
+    const inst = {
+      exchange: "binance",
+      instrumentType: "linear_perp",
+      symbolNative: "BTCUSDT",
+    };
+    expect(rawNdjsonPath("/base", inst, "5m", "2026-06-10")).toContain("symbol=BTCUSDT");
+    expect(rawNdjsonPath("/base", inst, "5m", "2026-06-10")).toContain("date=2026-06-10");
+  });
+
+  it("rejects when per-symbol file is missing for requested symbol", () => {
+    const base = mkdtempSync(tmpdir() + "/fb-mix-");
     try {
       const inst = {
         exchange: "binance",
@@ -43,16 +53,9 @@ describe("paths", () => {
       };
       const start = Date.parse("2026-06-06T00:00:00Z");
       const end = Date.parse("2026-06-06T09:55:33.844Z");
-      const path = join(
-        base,
-        "raw",
-        "exchange=binance",
-        "instrument_type=spot",
-        "interval=5m",
-        "date=2026-06-06",
-        "data.ndjson",
-      );
-      mkdirSync(dirname(path), { recursive: true });
+      const btcInst = { ...inst, symbolNative: "BTCUSDT" };
+      const path = rawNdjsonPath(base, btcInst, "5m", "2026-06-06");
+      mkdirSync(path.replace("/data.ndjson", ""), { recursive: true });
       const lastOpen = requiredLastOpenMsForSlice(end, 300_000);
       writeFileSync(
         path,
@@ -71,7 +74,7 @@ describe("paths", () => {
   });
 
   it("detects fallback ndjson present", () => {
-    const base = mkdtempSync(join(tmpdir(), "fb-"));
+    const base = mkdtempSync(tmpdir() + "/fb-");
     try {
       const inst = {
         exchange: "bybit",
@@ -85,16 +88,8 @@ describe("paths", () => {
       const start = Date.parse("2026-05-25T00:00:00Z");
       const end = Date.parse("2026-05-27T00:00:00Z");
       for (const day of ["2026-05-25", "2026-05-26"]) {
-        const path = join(
-          base,
-          "raw",
-          "exchange=bybit",
-          "instrument_type=spot",
-          "interval=1m",
-          `date=${day}`,
-          "data.ndjson",
-        );
-        mkdirSync(dirname(path), { recursive: true });
+        const path = rawNdjsonPath(base, inst, "1m", day);
+        mkdirSync(path.replace("/data.ndjson", ""), { recursive: true });
         const dayEnd = Date.parse(`${day}T00:00:00Z`) + 86_400_000;
         const lastOpen = requiredLastOpenMsForSlice(dayEnd, 60_000);
         writeFileSync(path, `${JSON.stringify({ open_time_ms: lastOpen })}\n`, "utf-8");
@@ -106,7 +101,7 @@ describe("paths", () => {
   });
 
   it("rejects stale same-day tail when last candle is too old", () => {
-    const base = mkdtempSync(join(tmpdir(), "fb-"));
+    const base = mkdtempSync(tmpdir() + "/fb-");
     try {
       const inst = {
         exchange: "binance",
@@ -119,16 +114,8 @@ describe("paths", () => {
       };
       const start = Date.parse("2026-06-06T00:00:00Z");
       const end = Date.parse("2026-06-06T09:55:33.844Z");
-      const path = join(
-        base,
-        "raw",
-        "exchange=binance",
-        "instrument_type=linear_perp",
-        "interval=1m",
-        "date=2026-06-06",
-        "data.ndjson",
-      );
-      mkdirSync(dirname(path), { recursive: true });
+      const path = rawNdjsonPath(base, inst, "1m", "2026-06-06");
+      mkdirSync(path.replace("/data.ndjson", ""), { recursive: true });
       const staleOpen = Date.parse("2026-06-06T08:00:00Z");
       writeFileSync(path, `${JSON.stringify({ open_time_ms: staleOpen })}\n`, "utf-8");
       expect(isFallbackSeriesOnDisk(base, inst, "1m", start, end)).toBe(false);
@@ -138,7 +125,7 @@ describe("paths", () => {
   });
 
   it("accepts same-day tail when last candle reaches slice end", () => {
-    const base = mkdtempSync(join(tmpdir(), "fb-"));
+    const base = mkdtempSync(tmpdir() + "/fb-");
     try {
       const inst = {
         exchange: "bybit",
@@ -151,16 +138,8 @@ describe("paths", () => {
       };
       const start = Date.parse("2026-06-06T00:00:00Z");
       const end = Date.parse("2026-06-06T09:55:33.844Z");
-      const path = join(
-        base,
-        "raw",
-        "exchange=bybit",
-        "instrument_type=linear_perp",
-        "interval=1m",
-        "date=2026-06-06",
-        "data.ndjson",
-      );
-      mkdirSync(dirname(path), { recursive: true });
+      const path = rawNdjsonPath(base, inst, "1m", "2026-06-06");
+      mkdirSync(path.replace("/data.ndjson", ""), { recursive: true });
       const freshOpen = requiredLastOpenMsForSlice(end, 60_000);
       writeFileSync(path, `${JSON.stringify({ open_time_ms: freshOpen })}\n`, "utf-8");
       expect(isFallbackSeriesOnDisk(base, inst, "1m", start, end)).toBe(true);
@@ -171,7 +150,7 @@ describe("paths", () => {
   });
 
   it("uses max open_time_ms when file rows are not chronological", () => {
-    const base = mkdtempSync(join(tmpdir(), "fb-"));
+    const base = mkdtempSync(tmpdir() + "/fb-");
     try {
       const inst = {
         exchange: "bybit",
@@ -184,16 +163,8 @@ describe("paths", () => {
       };
       const dayEnd = Date.parse("2026-06-06T00:00:00Z");
       const required = requiredLastOpenMsForSlice(dayEnd, 60_000);
-      const path = join(
-        base,
-        "raw",
-        "exchange=bybit",
-        "instrument_type=linear_perp",
-        "interval=1m",
-        "date=2026-06-05",
-        "data.ndjson",
-      );
-      mkdirSync(dirname(path), { recursive: true });
+      const path = rawNdjsonPath(base, inst, "1m", "2026-06-05");
+      mkdirSync(path.replace("/data.ndjson", ""), { recursive: true });
       const newest = required;
       const oldest = Date.parse("2026-06-05T01:03:00Z");
       writeFileSync(

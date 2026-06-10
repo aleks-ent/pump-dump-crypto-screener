@@ -3,6 +3,7 @@ import { loadSeries } from "./load/series.js";
 import { evaluateFeatures, MIN_PUMP_DURATION_BARS } from "./features/evaluate.js";
 import { computeScore, confidenceFromScore } from "./detect/score.js";
 import { classifyPhase } from "./detect/phases.js";
+import { phaseMeetsMinScore, candidateMeetsMinScore } from "./detect/threshold.js";
 import { filterPumpCandidatesByMinConsecutiveBars } from "./detect/run-length.js";
 import { buildReasons } from "./detect/reasons.js";
 import {
@@ -109,6 +110,7 @@ export function scanCoin(
 ): ScanCoinResult {
   const liquidityThreshold = opts.liquidityThreshold ?? 100_000;
   const minScore = opts.minScore ?? 40;
+  const minDumpScore = opts.minDumpScore ?? minScore;
   const useArchives = Boolean(opts.archivesDir);
   const coverageSnapshots = toCoverageSnapshots(coverages);
   const peersAvailable = group.instrumentsByExchange.size - 1;
@@ -166,7 +168,7 @@ export function scanCoin(
       `[scan] incremental tail: reusing ${incremental.cachedCandidates.length} cached candidate(s), rescanning from bar ${scanFromBarIndex}/${series.candles.length}`,
     );
     for (const cached of incremental.cachedCandidates) {
-      if (cached.score < minScore) continue;
+      if (!candidateMeetsMinScore(cached, minScore, minDumpScore)) continue;
       const barIndex = findBarIndexByOpenTime(series, cached.timestamp);
       if (barIndex == null) continue;
       if (barIndex < scanFromBarIndex) {
@@ -193,7 +195,7 @@ export function scanCoin(
     const phase = classifyPhase(f, score, loaded.quality.badData, lowLiquidity);
 
     if (!REPORTABLE_PHASES.has(phase)) continue;
-    if (phase === "ignore" || score < minScore) continue;
+    if (phase === "ignore" || !phaseMeetsMinScore(phase, score, minScore, minDumpScore)) continue;
 
     const candidate = toCandidate(
       leaderInst,

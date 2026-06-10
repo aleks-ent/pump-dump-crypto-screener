@@ -6,6 +6,9 @@ import {
   formatMonitorRunsMessage,
   formatPumpAlertMessage,
   formatPumpStatsMessages,
+  formatEpisodeStatsMessages,
+  formatEpisodeOverflowAlert,
+  formatDumpStatsMessages,
 } from "./telegram.js";
 import { buildClassificationKeyboard } from "./telegram-callback.js";
 
@@ -25,6 +28,14 @@ function samplePump(coin: string, startMs: number, peakScore: number): PumpEpiso
     confirmed: true,
     confirmedExchanges: ["binance"],
     eventCount: 3,
+  };
+}
+
+function sampleDump(coin: string, startMs: number, peakScore: number): PumpEpisode {
+  return {
+    ...samplePump(coin, startMs, peakScore),
+    type: "dump",
+    dominantPhase: "distribution_or_fade",
   };
 }
 
@@ -126,5 +137,47 @@ describe("formatPumpStatsMessages", () => {
     const message = formatPumpStatsMessages(pumps, 80)[0] ?? "";
     expect(message).toContain("<b>Pumps</b> · score &gt; 80 · last 5");
     expect(message.indexOf("NEW/USDT")).toBeLessThan(message.indexOf("OLD/USDT"));
+  });
+});
+
+describe("formatDumpStatsMessages", () => {
+  it("returns empty-state message", () => {
+    expect(formatDumpStatsMessages([], 55)).toEqual(["No dumps with score &gt; 55 in index."]);
+  });
+});
+
+describe("formatEpisodeStatsMessages", () => {
+  it("returns combined empty-state when both lists are empty", () => {
+    expect(formatEpisodeStatsMessages([], [], 80, 55)).toEqual([
+      "No pumps (&gt; 80) or dumps (&gt; 55) in index.",
+    ]);
+  });
+
+  it("includes pump and dump sections", async () => {
+    const client = createMemoryDbClient();
+    const repo = new PumpRepository(client);
+    await repo.applySchema();
+    await repo.upsertPumpEpisodes([
+      samplePump("BTC/USDT", Date.parse("2026-06-06T10:00:00.000Z"), 90),
+      sampleDump("ETH/USDT", Date.parse("2026-06-06T11:00:00.000Z"), 60),
+    ]);
+    const pumps = await repo.listStoredPumps({ minScore: 80, episodeType: "pump" });
+    const dumps = await repo.listStoredPumps({ minScore: 55, episodeType: "dump" });
+    const messages = formatEpisodeStatsMessages(pumps, dumps, 80, 55);
+    expect(messages.join("\n")).toContain("<b>Pumps</b>");
+    expect(messages.join("\n")).toContain("<b>Dumps</b>");
+    expect(messages.join("\n")).toContain("BTC/USDT");
+    expect(messages.join("\n")).toContain("ETH/USDT");
+  });
+});
+
+describe("formatEpisodeOverflowAlert", () => {
+  it("summarizes counts when too many episodes for individual alerts", () => {
+    const message = formatEpisodeOverflowAlert(12, 3, 5);
+    expect(message).toContain("Pumps: 12");
+    expect(message).toContain("Dumps: 3");
+    expect(message).toContain("15 total");
+    expect(message).toContain("exceeds 5");
+    expect(message).toContain("/stats");
   });
 });

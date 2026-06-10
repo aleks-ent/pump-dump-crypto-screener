@@ -16,6 +16,7 @@ export interface WorkerScanJob {
   universePath: string;
   indexPath: string;
   minScore: number;
+  minDumpScore: number;
   liquidityThreshold: number;
   exchanges: string[] | null;
   scanParams: ScanParams;
@@ -82,6 +83,7 @@ function runJob(job: WorkerScanJob): CoinWorkerResult {
       fallbackDir,
       extractedRoot,
       minScore: job.minScore,
+      minDumpScore: job.minDumpScore,
       liquidityThreshold: job.liquidityThreshold,
       exchanges,
       scanParams: job.scanParams,

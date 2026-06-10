@@ -35,7 +35,7 @@ describe("market-storage", () => {
       expect(norm).toBe(2);
       const rawPath = join(
         base,
-        "raw/exchange=binance/instrument_type=linear_perp/interval=1m/date=2023-11-14/data.ndjson",
+        "raw/exchange=binance/instrument_type=linear_perp/interval=1m/date=2023-11-14/symbol=BTCUSDT/data.ndjson",
       );
       const content = readFileSync(rawPath, "utf-8");
       expect(content.split("\n").filter(Boolean).length).toBe(2);
@@ -44,7 +44,7 @@ describe("market-storage", () => {
     }
   });
 
-  it("dedupes raw rows by open_time_ms on append", () => {
+  it("dedupes raw rows by instrument + open_time_ms on append", () => {
     const base = mkdtempSync(join(tmpdir(), "screener-"));
     try {
       const t1 = Date.parse("2026-06-06T10:00:00Z");
@@ -56,12 +56,35 @@ describe("market-storage", () => {
       ).toBe(1);
       const rawPath = join(
         base,
-        "raw/exchange=binance/instrument_type=linear_perp/interval=1m/date=2026-06-06/data.ndjson",
+        "raw/exchange=binance/instrument_type=linear_perp/interval=1m/date=2026-06-06/symbol=BTCUSDT/data.ndjson",
       );
       const lines = readFileSync(rawPath, "utf-8").trimEnd().split("\n");
       expect(lines).toHaveLength(3);
       const times = lines.map((l) => (JSON.parse(l) as { open_time_ms: number }).open_time_ms);
       expect(times).toEqual([t1, t2, t3]);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it("writes separate files per symbol", () => {
+    const base = mkdtempSync(join(tmpdir(), "screener-"));
+    try {
+      const t = Date.parse("2026-06-10T10:00:00Z");
+      const btc = sampleRecord(t);
+      const eth: CandleRecord = { ...sampleRecord(t), symbolNative: "ETHUSDT" };
+      expect(writeRawRecords(base, [btc], { endpoint: "/k" })).toBe(1);
+      expect(writeRawRecords(base, [eth], { endpoint: "/k" })).toBe(1);
+      const btcPath = join(
+        base,
+        "raw/exchange=binance/instrument_type=linear_perp/interval=1m/date=2026-06-10/symbol=BTCUSDT/data.ndjson",
+      );
+      const ethPath = join(
+        base,
+        "raw/exchange=binance/instrument_type=linear_perp/interval=1m/date=2026-06-10/symbol=ETHUSDT/data.ndjson",
+      );
+      expect(readFileSync(btcPath, "utf-8").trimEnd().split("\n")).toHaveLength(1);
+      expect(readFileSync(ethPath, "utf-8").trimEnd().split("\n")).toHaveLength(1);
     } finally {
       rmSync(base, { recursive: true, force: true });
     }

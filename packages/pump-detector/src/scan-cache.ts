@@ -37,6 +37,7 @@ export interface ExchangeDataFingerprint {
 
 export interface ScanParams {
   minScore: number;
+  minDumpScore: number;
   liquidityThreshold: number;
   exchanges: string[] | null;
 }
@@ -159,7 +160,11 @@ export function computeCoinDataFingerprint(
 }
 
 function scanParamsEqual(a: ScanParams, b: ScanParams): boolean {
-  if (a.minScore !== b.minScore || a.liquidityThreshold !== b.liquidityThreshold) {
+  if (
+    a.minScore !== b.minScore ||
+    a.minDumpScore !== b.minDumpScore ||
+    a.liquidityThreshold !== b.liquidityThreshold
+  ) {
     return false;
   }
   const aEx = a.exchanges?.slice().sort() ?? null;
@@ -224,6 +229,8 @@ export function shouldSkipScan(
   opts: {
     detectorVersion: string;
     windowStartMs: number;
+    /** Current scan window end (typically Date.now()). Cache must cover this instant. */
+    endMs: number;
     scanParams: ScanParams;
     dataFingerprint: ExchangeDataFingerprint[];
   },
@@ -231,6 +238,8 @@ export function shouldSkipScan(
   if (!cache) return false;
   if (cache.detectorVersion !== opts.detectorVersion) return false;
   if (cache.windowStartMs !== opts.windowStartMs) return false;
+  // Wall clock moved forward since cache — tail may hold new pumps even if fingerprint unchanged.
+  if (opts.endMs > cache.windowEndMs) return false;
   if (!scanParamsEqual(cache.scanParams, opts.scanParams)) return false;
   if (!fingerprintsEqual(cache.dataFingerprint, opts.dataFingerprint)) return false;
   return true;

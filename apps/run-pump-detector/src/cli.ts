@@ -6,9 +6,10 @@ import pLimit from "p-limit";
 import {
   defaultWorkerConcurrency,
   loadPumpMinScore,
+  loadPumpMinDumpScore,
   loadPumpScanCacheEnabled,
-  resolveArchiveWindow,
   resolveRepoPath,
+  resolveArchiveWindow,
   resolveWindow,
 } from "@screener/core";
 import {
@@ -28,7 +29,6 @@ import {
   createFileLogger,
   type CoinWorkerResult,
 } from "./logger.js";
-import { printEpisodeSummary } from "./print-summary.js";
 import { buildWorkerScanJob, ScanWorkerPool } from "./scan-worker-pool.js";
 
 export const PUMP_SCAN_COMPLETE_PREFIX = "PUMP_SCAN_COMPLETE:";
@@ -109,6 +109,7 @@ function createScanProgress(total: number): {
 
 async function main(): Promise<void> {
   const minScoreDefault = await loadPumpMinScore();
+  const minDumpScoreDefault = await loadPumpMinDumpScore();
   const scanCacheFromConfig = await loadPumpScanCacheEnabled();
   const program = new Command();
   program
@@ -121,7 +122,8 @@ async function main(): Promise<void> {
     .option("--start <iso>", "Window start (ISO UTC); overrides calendar --days")
     .option("--end <iso>", "Window end (ISO UTC)")
     .option("--output <path>", "Aggregated output NDJSON path")
-    .option("--min-score <n>", "Minimum score to emit", String(minScoreDefault))
+    .option("--min-score <n>", "Minimum pump score to emit", String(minScoreDefault))
+    .option("--min-dump-score <n>", "Minimum dump score to emit", String(minDumpScoreDefault))
     .option("--liquidity-threshold <n>", "Median 24h quote volume floor", "100000")
     .option("--exchanges <list>", "Comma-separated exchanges filter")
     .option("--market-category <cat>", "spot or futures")
@@ -132,7 +134,6 @@ async function main(): Promise<void> {
       (v, prev: string[]) => [...prev, v],
       [],
     )
-    .option("--summary-limit <n>", "Max episodes to print in console summary (0 = all)", "50")
     .option("--cache-dir <path>", "Per-coin scan result cache directory");
 
   program.parse(process.argv.slice(2).filter((a) => a !== "--"), { from: "user" });
@@ -145,12 +146,12 @@ async function main(): Promise<void> {
     end?: string;
     output?: string;
     minScore: string;
+    minDumpScore: string;
     liquidityThreshold: string;
     exchanges?: string;
     marketCategory?: string;
     maxGroups: string;
     symbol?: string[];
-    summaryLimit: string;
     cacheDir?: string;
   }>();
 
@@ -246,6 +247,7 @@ async function main(): Promise<void> {
   const archivesDir = join(dataDir, "archives");
   const scanParams: ScanParams = {
     minScore: Number(opts.minScore),
+    minDumpScore: Number(opts.minDumpScore),
     liquidityThreshold: Number(opts.liquidityThreshold),
     exchanges: opts.exchanges
       ? opts.exchanges
@@ -294,6 +296,7 @@ async function main(): Promise<void> {
               shouldSkipScan(cached, {
                 detectorVersion: PUMP_DETECTOR_VERSION,
                 windowStartMs: startMs,
+                endMs,
                 scanParams,
                 dataFingerprint,
               })
@@ -335,6 +338,7 @@ async function main(): Promise<void> {
                 universePath,
                 indexPath,
                 minScore: Number(opts.minScore),
+                minDumpScore: Number(opts.minDumpScore),
                 liquidityThreshold: Number(opts.liquidityThreshold),
                 exchanges: parseExchanges(opts.exchanges),
                 scanParams,
@@ -427,15 +431,8 @@ async function main(): Promise<void> {
 
   const episodes = groupEventsIntoEpisodes(allEvents);
   const episodeStats = summarizeEpisodes(episodes, totalCandidates);
-  const summaryLimit = Number(opts.summaryLimit);
 
   renameSync(tempOutputPath, outputPath);
-
-  printEpisodeSummary(episodes, episodeStats, {
-    limit: Number.isFinite(summaryLimit) ? summaryLimit : 50,
-    rawOutputPath: outputPath,
-    write: (line) => process.stderr.write(`${line}\n`),
-  });
 
   const episodesPath = join(runDir, "pump_episodes.ndjson");
   writeFileSync(
