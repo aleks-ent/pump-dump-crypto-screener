@@ -11,7 +11,6 @@
     "build": "tsup src/cli.ts src/run-exchange.ts src/run-all.ts src/worker.ts src/report-coverage.ts src/report-data-span.ts --format esm --dts --clean",
     "start": "tsx src/cli.ts",
     "all": "tsx src/run-all.ts",
-    "pretail": "pnpm --filter @screener/storage run build && pnpm --filter @screener/archive run build",
     "tail": "tsx src/fetch-tail.ts",
     "exchange": "tsx src/run-exchange.ts",
     "worker": "tsx src/worker.ts",
