@@ -242,7 +242,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const dataRoots = [dataDir, join(dataDir, "api_fallback"), join(dataDir, "extracted")];
+  const dataRoots = [join(dataDir, "api_fallback"), join(dataDir, "extracted")];
   const archivesDir = join(dataDir, "archives");
   const scanParams: ScanParams = {
     minScore: Number(opts.minScore),
@@ -366,13 +366,15 @@ async function main(): Promise<void> {
             `[${idx + 1}/${groups.length}] done ${group.key} status=${result.status} leader=${result.leaderExchange} candidates=${result.candidateCount}`,
           );
 
-          if (result.status === "error" || result.error) {
+          if (result.status === "error") {
             failures.push({
               coinKey: group.key,
               code: 1,
               error: result.error ?? "worker error",
             });
             log(`[${idx + 1}/${groups.length}] FAILED ${group.key}: ${result.error ?? "worker error"}`);
+          } else if (result.status === "skipped" && result.error) {
+            log(`[${idx + 1}/${groups.length}] skipped ${group.key}: ${result.error}`);
           }
         } finally {
           progress.increment();

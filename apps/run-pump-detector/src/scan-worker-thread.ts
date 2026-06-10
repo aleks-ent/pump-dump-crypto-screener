@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { parentPort } from "node:worker_threads";
 import { buildInstrumentGroups, type InstrumentGroup, type ScanParams } from "@screener/pump-detector";
 import { createFileLogger, type CoinWorkerResult } from "./logger.js";
@@ -52,6 +54,8 @@ function runJob(job: WorkerScanJob): CoinWorkerResult {
   const exchanges = job.exchanges ? new Set(job.exchanges) : undefined;
   const group = findGroup(job);
   if (!group) {
+    mkdirSync(dirname(job.outputPath), { recursive: true });
+    writeFileSync(job.outputPath, "", "utf-8");
     return {
       coinKey: job.coinKey,
       status: "skipped",
@@ -59,7 +63,6 @@ function runJob(job: WorkerScanJob): CoinWorkerResult {
       exchanges: [],
       candidateCount: 0,
       coverages: [],
-      error: "coin not found in universe/index",
     };
   }
 

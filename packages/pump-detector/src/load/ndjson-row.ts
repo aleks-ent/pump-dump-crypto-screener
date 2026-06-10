@@ -33,6 +33,20 @@ export function isValidOhlcv(
   return true;
 }
 
+/** Skip rows from multi-symbol day NDJSON files (fetch:stats / api_fallback layout). */
+export function rowMatchesInstrument(row: NdjsonRow, inst: Instrument): boolean {
+  if (row.exchange != null && String(row.exchange).toLowerCase() !== inst.exchange.toLowerCase()) {
+    return false;
+  }
+  if (row.instrument_type != null && String(row.instrument_type) !== inst.instrumentType) {
+    return false;
+  }
+  if (row.symbol_native != null && String(row.symbol_native) !== inst.symbolNative) {
+    return false;
+  }
+  return true;
+}
+
 export function rowToCandle(row: NdjsonRow, inst: Instrument): Candle | null {
   const open = parseNum(row.open);
   const high = parseNum(row.high);

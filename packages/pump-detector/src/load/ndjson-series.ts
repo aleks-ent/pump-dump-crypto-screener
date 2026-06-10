@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import type { Instrument } from "@screener/core";
 import { rawNdjsonPath, utcDaysInWindow } from "@screener/storage";
 import type { Candle, SeriesQualityFlags, Timeframe } from "../types.js";
-import { type NdjsonRow, rowToCandle } from "./ndjson-row.js";
+import { type NdjsonRow, rowMatchesInstrument, rowToCandle } from "./ndjson-row.js";
 
 export interface CandleSeriesStats {
   barCount: number;
@@ -38,6 +38,7 @@ export function loadCandleSeriesStats(
       } catch {
         continue;
       }
+      if (!rowMatchesInstrument(row, inst)) continue;
       const openTimeMs = Number(row.open_time_ms);
       if (!Number.isFinite(openTimeMs)) continue;
       if (openTimeMs < startMs || openTimeMs >= endMs) continue;
@@ -87,6 +88,7 @@ export function loadCandleSeries(
       } catch {
         continue;
       }
+      if (!rowMatchesInstrument(row, inst)) continue;
       const candle = rowToCandle(row, inst);
       if (!candle) continue;
       if (candle.openTimeMs < startMs || candle.openTimeMs >= endMs) continue;

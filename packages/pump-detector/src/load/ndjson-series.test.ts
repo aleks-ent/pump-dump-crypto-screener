@@ -63,4 +63,47 @@ describe("loadCandleSeriesStats", () => {
     expect(stats.firstBarMs).toBe(full.candles[0]?.openTimeMs ?? null);
     expect(stats.lastBarMs).toBe(full.candles[full.candles.length - 1]?.openTimeMs ?? null);
   });
+
+  it("ignores other symbols in multi-symbol day files", () => {
+    const root = mkdtempSync(join(tmpdir(), "pump-stats-mix-"));
+    const day = "2026-06-01";
+    const openTimeMs = Date.parse(`${day}T12:00:00.000Z`);
+    writeDay(root, day, [
+      {
+        exchange: "binance",
+        instrument_type: "spot",
+        symbol_native: "ETHUSDT",
+        interval: "5m",
+        open_time_ms: openTimeMs,
+        open: "3000",
+        high: "3100",
+        low: "2900",
+        close: "3050",
+        volume: "1000",
+        quote_volume: "3050000",
+      },
+      {
+        exchange: "binance",
+        instrument_type: "spot",
+        symbol_native: "BTCUSDT",
+        interval: "5m",
+        open_time_ms: openTimeMs,
+        open: "100",
+        high: "110",
+        low: "99",
+        close: "105",
+        volume: "1000",
+        quote_volume: "105000",
+      },
+    ]);
+
+    const startMs = Date.parse(`${day}T00:00:00.000Z`);
+    const endMs = Date.parse(`${day}T23:59:59.999Z`) + 1;
+    const stats = loadCandleSeriesStats(root, inst, "5m", startMs, endMs);
+    const full = loadCandleSeries(root, inst, "5m", startMs, endMs);
+
+    expect(stats.barCount).toBe(1);
+    expect(full.candles.length).toBe(1);
+    expect(full.candles[0]!.symbolNative).toBe("BTCUSDT");
+  });
 });

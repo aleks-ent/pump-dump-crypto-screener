@@ -19,6 +19,14 @@ import {
 } from "@screener/pump-detector";
 import type { CoinWorkerResult } from "./logger.js";
 
+function writeCoinScanOutput(outputPath: string, candidates: unknown[]): void {
+  mkdirSync(dirname(outputPath), { recursive: true });
+  writeFileSync(outputPath, "", "utf-8");
+  for (const c of candidates) {
+    appendFileSync(outputPath, `${JSON.stringify(c)}\n`, "utf-8");
+  }
+}
+
 export interface ScanOneCoinOptions {
   group: InstrumentGroup;
   startMs: number;
@@ -126,6 +134,8 @@ export function scanOneCoin(opts: ScanOneCoinOptions): CoinWorkerResult {
 
   if (!leader) {
     onLog("SKIP: no exchange with data coverage > 0%");
+    writeCoinScanOutput(outputPath, []);
+    onLog(`Wrote 0 candidate(s) to ${outputPath}`);
     return {
       coinKey: group.key,
       status: "skipped",
@@ -139,7 +149,6 @@ export function scanOneCoin(opts: ScanOneCoinOptions): CoinWorkerResult {
         toMs: c.toMs,
         fullySatisfied: c.fullySatisfied,
       })),
-      error: "no data coverage",
     };
   }
 
@@ -191,11 +200,7 @@ export function scanOneCoin(opts: ScanOneCoinOptions): CoinWorkerResult {
       : undefined,
   });
 
-  mkdirSync(dirname(outputPath), { recursive: true });
-  writeFileSync(outputPath, "", "utf-8");
-  for (const c of candidates) {
-    appendFileSync(outputPath, `${JSON.stringify(c)}\n`, "utf-8");
-  }
+  writeCoinScanOutput(outputPath, candidates);
   onLog(`Wrote ${candidates.length} candidate(s) to ${outputPath}`);
 
   const coverageSnapshots = coverages.map((c) => ({
@@ -240,7 +245,7 @@ export function allDataPaths(dataDir: string): {
   extractedRoot: string;
 } {
   return {
-    dataRoots: [dataDir, join(dataDir, "api_fallback"), join(dataDir, "extracted")],
+    dataRoots: [join(dataDir, "api_fallback"), join(dataDir, "extracted")],
     archivesDir: join(dataDir, "archives"),
     fallbackDir: join(dataDir, "api_fallback"),
     extractedRoot: join(dataDir, "extracted"),

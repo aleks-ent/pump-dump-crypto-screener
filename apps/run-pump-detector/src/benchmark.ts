@@ -72,7 +72,7 @@ function allDataPaths(dataDir: string): {
   fallbackDir: string;
 } {
   return {
-    dataRoots: [dataDir, join(dataDir, "api_fallback"), join(dataDir, "extracted")],
+    dataRoots: [join(dataDir, "api_fallback"), join(dataDir, "extracted")],
     archivesDir: join(dataDir, "archives"),
     fallbackDir: join(dataDir, "api_fallback"),
   };

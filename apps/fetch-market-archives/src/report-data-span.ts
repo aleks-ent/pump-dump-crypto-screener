@@ -75,7 +75,7 @@ function allDataPaths(dataDir: string): {
   fallbackDir: string;
 } {
   return {
-    ndjsonRoots: [dataDir, join(dataDir, "api_fallback"), join(dataDir, "extracted")],
+    ndjsonRoots: [join(dataDir, "api_fallback"), join(dataDir, "extracted")],
     archivesDir: join(dataDir, "archives"),
     fallbackDir: join(dataDir, "api_fallback"),
   };

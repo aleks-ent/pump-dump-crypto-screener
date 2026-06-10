@@ -29,6 +29,47 @@ describe("paths", () => {
     expect(utcDaysInWindow(start, end)).toEqual(["2026-06-05", "2026-06-06"]);
   });
 
+  it("rejects multi-symbol day file when instrument rows are missing", () => {
+    const base = mkdtempSync(join(tmpdir(), "fb-mix-"));
+    try {
+      const inst = {
+        exchange: "binance",
+        instrumentType: "spot",
+        symbolNative: "ETHUSDT",
+        symbolCanonical: "ETH/USDT",
+        base: "ETH",
+        quote: "USDT",
+        metadata: {},
+      };
+      const start = Date.parse("2026-06-06T00:00:00Z");
+      const end = Date.parse("2026-06-06T09:55:33.844Z");
+      const path = join(
+        base,
+        "raw",
+        "exchange=binance",
+        "instrument_type=spot",
+        "interval=5m",
+        "date=2026-06-06",
+        "data.ndjson",
+      );
+      mkdirSync(dirname(path), { recursive: true });
+      const lastOpen = requiredLastOpenMsForSlice(end, 300_000);
+      writeFileSync(
+        path,
+        `${JSON.stringify({
+          exchange: "binance",
+          instrument_type: "spot",
+          symbol_native: "BTCUSDT",
+          open_time_ms: lastOpen,
+        })}\n`,
+        "utf-8",
+      );
+      expect(isFallbackSeriesOnDisk(base, inst, "5m", start, end)).toBe(false);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
   it("detects fallback ndjson present", () => {
     const base = mkdtempSync(join(tmpdir(), "fb-"));
     try {
