@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   handleClassificationCallback,
   isClassifierTelegramChat,
+  runTelegramBot,
 } from "./telegram-bot.js";
 
 describe("Telegram classifier chat", () => {
@@ -38,5 +39,28 @@ describe("Telegram classifier chat", () => {
     );
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("answerCallbackQuery");
+  });
+
+  it("does not send a Telegram message when the bot process starts", async () => {
+    const fetchMock = vi.fn(
+      () => new Promise<Response>(() => undefined),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      void runTelegramBot(
+        {
+          telegram: { botToken: "token", classifierChatId: "36772199" },
+          pump: { minScore: 80, minDumpScore: 55 },
+        },
+        { log: vi.fn() },
+      );
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/getUpdates");
+    expect(fetchMock.mock.calls[0]?.[1]).toBeUndefined();
   });
 });
