@@ -3,7 +3,7 @@ import { loadSeries } from "./load/series.js";
 import { evaluateFeatures } from "./features/evaluate.js";
 import { computeScore, confidenceFromScore } from "./detect/score.js";
 import { classifyPhase } from "./detect/phases.js";
-import { phaseMeetsMinScore } from "./detect/threshold.js";
+import { phaseMeetsMinScore, pumpPhaseMeetsQualityGates } from "./detect/threshold.js";
 import { filterPumpCandidatesByMinConsecutiveBars } from "./detect/run-length.js";
 import { buildReasons } from "./detect/reasons.js";
 import {
@@ -147,6 +147,7 @@ export function scanInstrumentGroup(
 
       if (!REPORTABLE_PHASES.has(phase)) continue;
       if (phase === "ignore" || !phaseMeetsMinScore(phase, score, minScore, minDumpScore)) continue;
+      if (!pumpPhaseMeetsQualityGates(phase, f.priceChangeLast6, minScore)) continue;
 
       hits.push({
         barIndex: i,

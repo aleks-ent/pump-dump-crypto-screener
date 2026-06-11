@@ -20,12 +20,13 @@ import {
 import {
   groupEventsIntoEpisodes,
   summarizeEpisodes,
-  candidateMeetsMinScore,
+  candidateIsReportable,
   type PumpCandidate,
 } from "@screener/pump-detector";
 import { runCommand } from "./run-step.js";
 import { assertScanCompleted, loadLastPumpScanManifest } from "./scan-validation.js";
 import { loadTelegramConfig, sendEpisodeAlerts, TELEGRAM_ALERT_DETAIL_LIMIT } from "./telegram.js";
+import { filterPumpsPastCooldown } from "./alert-cooldown.js";
 
 function loadPumpCandidates(path: string): PumpCandidate[] {
   const content = readFileSync(path, "utf-8");
@@ -166,16 +167,19 @@ async function runMonitorPipeline(args: {
 
   console.error("\n=== Step 3/3: persist episodes and notify ===");
   const events = loadPumpCandidates(eventsPath).filter((e) =>
-    candidateMeetsMinScore(e, minScore, minDumpScore),
+    candidateIsReportable(e, minScore, minDumpScore),
   );
   const episodes = groupEventsIntoEpisodes(events);
   const stats = summarizeEpisodes(episodes, events.length);
 
   console.error(
-    `Scan produced ${stats.pumpEpisodes} pump episode(s) and ${stats.dumpEpisodes} dump episode(s)`,
+    `Scan produced ${stats.pumpEpisodes} pump episode(s) and ${stats.dumpEpisodes} dump episode(s) (after quality gates)`,
   );
 
   const existingCount = await pumpRepo.countPumps();
+  const minNewStartMs =
+    episodes.length > 0 ? Math.min(...episodes.map((e) => e.startMs)) : Date.now();
+  const recentPumpStarts = await pumpRepo.listRecentPumpStartsByCoin(minNewStartMs);
   const { newPumps, newDumps } = await pumpRepo.upsertPumpEpisodes(episodes);
   const totalCount = await pumpRepo.countPumps();
   onNewPumpsCount(newPumps.length);
@@ -184,14 +188,22 @@ async function runMonitorPipeline(args: {
     `Screener DB episodes: ${existingCount} existing → ${totalCount} total (${newPumps.length} new pump(s), ${newDumps.length} new dump(s))`,
   );
 
-  if (newPumps.length === 0 && newDumps.length === 0) {
-    console.error("No new pumps or dumps — Telegram not sent");
+  const { alertable: pumpsToAlert, suppressed: cooldownSuppressed } =
+    filterPumpsPastCooldown(newPumps, recentPumpStarts);
+  if (cooldownSuppressed.length > 0) {
+    console.error(
+      `Cooldown: suppressed ${cooldownSuppressed.length} pump alert(s) within 4h of a prior alert on the same coin`,
+    );
+  }
+
+  if (pumpsToAlert.length === 0 && newDumps.length === 0) {
+    console.error("No new pumps or dumps to alert — Telegram not sent");
     return;
   }
 
   if (opts.noTelegram) {
     console.error(
-      `Skipping Telegram (--no-telegram); ${newPumps.length} new pump(s), ${newDumps.length} new dump(s) stored`,
+      `Skipping Telegram (--no-telegram); ${pumpsToAlert.length} pump(s) would alert, ${newDumps.length} new dump(s) stored`,
     );
     return;
   }
@@ -204,14 +216,14 @@ async function runMonitorPipeline(args: {
     return;
   }
 
-  const messageCount = await sendEpisodeAlerts(telegram, newPumps, newDumps);
-  if (newPumps.length + newDumps.length > TELEGRAM_ALERT_DETAIL_LIMIT) {
+  const messageCount = await sendEpisodeAlerts(telegram, pumpsToAlert, newDumps);
+  if (pumpsToAlert.length + newDumps.length > TELEGRAM_ALERT_DETAIL_LIMIT) {
     console.error(
-      `Telegram summary sent (${newPumps.length} new pump(s), ${newDumps.length} new dump(s) — individual alerts skipped, limit ${TELEGRAM_ALERT_DETAIL_LIMIT})`,
+      `Telegram summary sent (${pumpsToAlert.length} new pump(s), ${newDumps.length} new dump(s) — individual alerts skipped, limit ${TELEGRAM_ALERT_DETAIL_LIMIT})`,
     );
   } else {
     console.error(
-      `Telegram alert sent for ${newPumps.length} new pump(s) and ${newDumps.length} new dump(s) (${messageCount} message${messageCount === 1 ? "" : "s"})`,
+      `Telegram alert sent for ${pumpsToAlert.length} new pump(s) and ${newDumps.length} new dump(s) (${messageCount} message${messageCount === 1 ? "" : "s"})`,
     );
   }
 }

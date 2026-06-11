@@ -181,4 +181,19 @@ describe("PumpRepository", () => {
       "Pump not found",
     );
   });
+
+  it("listRecentPumpStartsByCoin returns latest start per coin before a cutoff", async () => {
+    const early = Date.parse("2026-06-10T01:00:00.000Z");
+    const later = Date.parse("2026-06-10T05:00:00.000Z");
+    await repo.upsertPumpEpisodes([
+      samplePump("AIO/USDT", early),
+      samplePump("AIO/USDT", later),
+      samplePump("ZKP/USDT", early),
+    ]);
+
+    const recent = await repo.listRecentPumpStartsByCoin(later + 1);
+    expect(recent.get("AIO/USDT")).toBe(later);
+    expect(recent.get("ZKP/USDT")).toBe(early);
+    expect(recent.has("MISSING/USDT")).toBe(false);
+  });
 });

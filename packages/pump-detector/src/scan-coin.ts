@@ -3,7 +3,11 @@ import { loadSeries } from "./load/series.js";
 import { evaluateFeatures, MIN_PUMP_DURATION_BARS } from "./features/evaluate.js";
 import { computeScore, confidenceFromScore } from "./detect/score.js";
 import { classifyPhase } from "./detect/phases.js";
-import { phaseMeetsMinScore, candidateMeetsMinScore } from "./detect/threshold.js";
+import {
+  phaseMeetsMinScore,
+  candidateIsReportable,
+  pumpPhaseMeetsQualityGates,
+} from "./detect/threshold.js";
 import { filterPumpCandidatesByMinConsecutiveBars } from "./detect/run-length.js";
 import { buildReasons } from "./detect/reasons.js";
 import {
@@ -168,7 +172,7 @@ export function scanCoin(
       `[scan] incremental tail: reusing ${incremental.cachedCandidates.length} cached candidate(s), rescanning from bar ${scanFromBarIndex}/${series.candles.length}`,
     );
     for (const cached of incremental.cachedCandidates) {
-      if (!candidateMeetsMinScore(cached, minScore, minDumpScore)) continue;
+      if (!candidateIsReportable(cached, minScore, minDumpScore)) continue;
       const barIndex = findBarIndexByOpenTime(series, cached.timestamp);
       if (barIndex == null) continue;
       if (barIndex < scanFromBarIndex) {
@@ -196,6 +200,7 @@ export function scanCoin(
 
     if (!REPORTABLE_PHASES.has(phase)) continue;
     if (phase === "ignore" || !phaseMeetsMinScore(phase, score, minScore, minDumpScore)) continue;
+    if (!pumpPhaseMeetsQualityGates(phase, f.priceChangeLast6, minScore)) continue;
 
     const candidate = toCandidate(
       leaderInst,

@@ -227,6 +227,29 @@ export class PumpRepository {
     }
     return null;
   }
+
+  /**
+   * Latest pump episode start per coin (for alert cooldown). Excludes episodes
+   * whose start_ms is at or after `beforeStartMs` so upserts in the same run
+   * are not counted as prior alerts.
+   */
+  async listRecentPumpStartsByCoin(beforeStartMs: number): Promise<Map<string, number>> {
+    const result = await this.client.execute({
+      sql: `
+        SELECT coin, MAX(start_ms) AS start_ms
+        FROM pumps
+        WHERE episode_type = 'pump' AND start_ms < ?
+        GROUP BY coin
+      `,
+      args: [beforeStartMs],
+    });
+
+    const out = new Map<string, number>();
+    for (const row of result.rows) {
+      out.set(String(row.coin), Number(row.start_ms));
+    }
+    return out;
+  }
 }
 
 export function defaultSchemaPath(): string {
