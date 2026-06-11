@@ -15,6 +15,9 @@ Subscribers can use `/stats` and `/runs`. Only `classifierTelegramChatId` can cl
 episodes; that chat's alerts include **Pump | Dump | None** buttons, while other
 subscribers receive alerts without those buttons.
 
+The classifier chat always receives alerts, even before it sends `/start`. Other chats
+must send `/start` to subscribe.
+
 ## 1. Create a bot and get the token
 
 1. Open Telegram and message [@BotFather](https://t.me/BotFather).

@@ -42,6 +42,13 @@ export function loadTelegramSubscriberIds(baseDir: string): string[] {
   }
 }
 
+export function resolveTelegramAlertChatIds(
+  classifierChatId: string,
+  subscriberIds: readonly string[],
+): string[] {
+  return [...new Set([classifierChatId, ...subscriberIds])];
+}
+
 function saveTelegramSubscriberIds(baseDir: string, chatIds: readonly string[]): void {
   const path = telegramSubscribersPath(baseDir);
   const tempPath = `${path}.tmp-${process.pid}`;

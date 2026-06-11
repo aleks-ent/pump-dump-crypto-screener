@@ -26,7 +26,10 @@ import {
 import { runCommand } from "./run-step.js";
 import { assertScanCompleted, loadLastPumpScanManifest } from "./scan-validation.js";
 import { loadTelegramConfig, sendEpisodeAlerts, TELEGRAM_ALERT_DETAIL_LIMIT } from "./telegram.js";
-import { loadTelegramSubscriberIds } from "./telegram-subscribers.js";
+import {
+  loadTelegramSubscriberIds,
+  resolveTelegramAlertChatIds,
+} from "./telegram-subscribers.js";
 import { filterPumpsPastCooldown } from "./alert-cooldown.js";
 
 function loadPumpCandidates(path: string): PumpCandidate[] {
@@ -217,16 +220,15 @@ async function runMonitorPipeline(args: {
     return;
   }
 
-  const subscriberIds = loadTelegramSubscriberIds(dataDir);
-  if (subscriberIds.length === 0) {
-    console.error("New episodes found but no Telegram users have subscribed with /start");
-    return;
-  }
+  const recipientIds = resolveTelegramAlertChatIds(
+    telegram.classifierChatId,
+    loadTelegramSubscriberIds(dataDir),
+  );
 
   let deliveredChats = 0;
   let failedChats = 0;
   let messageCount = 0;
-  for (const chatId of subscriberIds) {
+  for (const chatId of recipientIds) {
     try {
       messageCount += await sendEpisodeAlerts(
         { ...telegram, chatId },
@@ -247,11 +249,11 @@ async function runMonitorPipeline(args: {
 
   if (pumpsToAlert.length + newDumps.length > TELEGRAM_ALERT_DETAIL_LIMIT) {
     console.error(
-      `Telegram summary sent to ${deliveredChats}/${subscriberIds.length} subscriber(s) (${pumpsToAlert.length} new pump(s), ${newDumps.length} new dump(s) — individual alerts skipped, limit ${TELEGRAM_ALERT_DETAIL_LIMIT})`,
+      `Telegram summary sent to ${deliveredChats}/${recipientIds.length} recipient(s) (${pumpsToAlert.length} new pump(s), ${newDumps.length} new dump(s) — individual alerts skipped, limit ${TELEGRAM_ALERT_DETAIL_LIMIT})`,
     );
   } else {
     console.error(
-      `Telegram alerts sent to ${deliveredChats}/${subscriberIds.length} subscriber(s) for ${pumpsToAlert.length} new pump(s) and ${newDumps.length} new dump(s) (${messageCount} message${messageCount === 1 ? "" : "s"}${failedChats > 0 ? `, ${failedChats} failed chat(s)` : ""})`,
+      `Telegram alerts sent to ${deliveredChats}/${recipientIds.length} recipient(s) for ${pumpsToAlert.length} new pump(s) and ${newDumps.length} new dump(s) (${messageCount} message${messageCount === 1 ? "" : "s"}${failedChats > 0 ? `, ${failedChats} failed chat(s)` : ""})`,
     );
   }
 }

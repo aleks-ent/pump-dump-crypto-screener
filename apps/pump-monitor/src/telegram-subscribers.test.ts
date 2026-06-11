@@ -7,6 +7,7 @@ import {
   loadTelegramSubscriberIds,
   normalizeTelegramChatId,
   removeTelegramSubscriber,
+  resolveTelegramAlertChatIds,
   telegramSubscribersPath,
 } from "./telegram-subscribers.js";
 
@@ -54,5 +55,12 @@ describe("Telegram subscribers", () => {
       readFileSync(telegramSubscribersPath(baseDir), "utf-8"),
     ) as { chatIds: string[] };
     expect(stored.chatIds).toEqual(["12345"]);
+  });
+
+  it("always includes the classifier chat in alert recipients", () => {
+    expect(resolveTelegramAlertChatIds("36772199", [])).toEqual(["36772199"]);
+    expect(
+      resolveTelegramAlertChatIds("36772199", ["12345", "36772199"]),
+    ).toEqual(["36772199", "12345"]);
   });
 });
