@@ -11,14 +11,21 @@ import {
 import { findRepoRoot, resolveRepoPath } from "@screener/core";
 import { parseClassificationCallback } from "./telegram-callback.js";
 import {
+  addTelegramSubscriber,
+  removeTelegramSubscriber,
+} from "./telegram-subscribers.js";
+import {
   answerCallbackQuery,
   editMessageText,
   formatClassifiedPumpMessage,
   formatMonitorRunsMessage,
   formatPumpStatsMessages,
+  formatStartMessage,
   buildCommandReplyKeyboard,
+  normalizeTelegramChatId,
   sendTelegramMessage,
   type TelegramConfig,
+  type TelegramRuntimeConfig,
 } from "./telegram.js";
 
 export interface PumpConfig {
@@ -27,7 +34,7 @@ export interface PumpConfig {
 }
 
 export interface PumpBotConfig {
-  telegram: TelegramConfig;
+  telegram: TelegramRuntimeConfig;
   pump: PumpConfig;
 }
 
@@ -59,7 +66,7 @@ export async function loadPumpBotConfig(): Promise<PumpBotConfig | null> {
   const mod = await import(pathToFileURL(resolveRepoPath("config.js")).href);
   const cfg = (mod.default ?? mod) as {
     telegramBotToken?: string;
-    telegramChatId?: string;
+    classifierTelegramChatId?: string | number;
     pump?: {
       minScore?: number;
       minDumpScore?: number;
@@ -67,14 +74,16 @@ export async function loadPumpBotConfig(): Promise<PumpBotConfig | null> {
     };
   };
   const botToken = cfg.telegramBotToken?.trim() ?? "";
-  const chatId = cfg.telegramChatId?.trim() ?? "";
-  if (!botToken || !chatId) return null;
+  const classifierChatId = normalizeTelegramChatId(
+    cfg.classifierTelegramChatId,
+  );
+  if (!botToken || !classifierChatId) return null;
 
   const pumpCfg = cfg.pump ?? {};
   const minScore = Number(pumpCfg.minScore ?? pumpCfg.statsMinScore ?? 80);
   const minDumpScore = Number(pumpCfg.minDumpScore ?? 55);
   return {
-    telegram: { botToken, chatId },
+    telegram: { botToken, classifierChatId },
     pump: { minScore, minDumpScore },
   };
 }
@@ -115,7 +124,7 @@ function saveUpdateOffset(baseDir: string, offset: number): void {
 }
 
 async function fetchUpdates(
-  config: TelegramConfig,
+  config: TelegramRuntimeConfig,
   offset: number,
 ): Promise<TelegramUpdate[]> {
   const url = new URL(`https://api.telegram.org/bot${config.botToken}/getUpdates`);
@@ -136,7 +145,17 @@ async function fetchUpdates(
 
 const STATS_EPISODES_LIMIT = 5;
 
-export async function handleStatsCommand(config: PumpBotConfig): Promise<number> {
+function telegramConfigForChat(
+  config: PumpBotConfig,
+  chatId: string,
+): TelegramConfig {
+  return { ...config.telegram, chatId };
+}
+
+export async function handleStatsCommand(
+  config: PumpBotConfig,
+  chatId: string,
+): Promise<number> {
   const repo = await createPumpRepository();
   const pumps = await repo.listStoredPumps({
     minScore: config.pump.minScore,
@@ -150,18 +169,28 @@ export async function handleStatsCommand(config: PumpBotConfig): Promise<number>
   );
 
   for (const message of messages) {
-    await sendTelegramMessage(config.telegram, message);
+    await sendTelegramMessage(telegramConfigForChat(config, chatId), message);
   }
   return messages.length;
 }
 
 const MONITOR_RUNS_LIMIT = 5;
 
-export async function handleRunsCommand(config: PumpBotConfig): Promise<void> {
+export function isClassifierTelegramChat(
+  classifierChatId: string,
+  chatId: number | undefined,
+): boolean {
+  return chatId != null && String(chatId) === classifierChatId;
+}
+
+export async function handleRunsCommand(
+  config: PumpBotConfig,
+  chatId: string,
+): Promise<void> {
   const repo = await createMonitorRunRepository();
   const runs = await repo.listRecentRuns(MONITOR_RUNS_LIMIT);
   const message = formatMonitorRunsMessage(runs, MONITOR_RUNS_LIMIT);
-  await sendTelegramMessage(config.telegram, message);
+  await sendTelegramMessage(telegramConfigForChat(config, chatId), message);
 }
 
 export async function handleClassificationCallback(
@@ -170,8 +199,13 @@ export async function handleClassificationCallback(
   log: (msg: string) => void,
 ): Promise<void> {
   const chatId = callbackQuery.message?.chat.id;
-  if (chatId == null || String(chatId) !== config.telegram.chatId) {
-    log(`Ignored callback from unauthorized chat ${chatId ?? "unknown"}`);
+  if (!isClassifierTelegramChat(config.telegram.classifierChatId, chatId)) {
+    log(`Ignored classification callback from chat ${chatId ?? "unknown"}`);
+    await answerCallbackQuery(
+      config.telegram,
+      callbackQuery.id,
+      "Classification is not available in this chat",
+    );
     return;
   }
 
@@ -225,13 +259,8 @@ export async function runTelegramBot(
   let offset = loadUpdateOffset(baseDir);
 
   log(
-    `Telegram bot listening (chat ${config.telegram.chatId}, /stats, /runs, classification buttons enabled)`,
+    `Public Telegram bot listening (/start, /stats, /runs, /stop; classification restricted to chat ${config.telegram.classifierChatId})`,
   );
-
-  await sendTelegramMessage(config.telegram, "Tap a button for /stats or /runs.", {
-    replyMarkup: buildCommandReplyKeyboard(),
-  });
-  log("Sent command reply keyboard");
 
   for (;;) {
     const updates = await fetchUpdates(config.telegram, offset);
@@ -248,20 +277,39 @@ export async function runTelegramBot(
       if (!message?.text) continue;
 
       const chatId = String(message.chat.id);
-      if (chatId !== config.telegram.chatId) {
-        log(`Ignored message from unauthorized chat ${chatId}`);
-        continue;
-      }
-
       const command = parseCommand(message.text);
-      if (command === "/stats") {
-        log("Handling /stats");
-        const count = await handleStatsCommand(config);
-        log(`Sent /stats reply (${count} message${count === 1 ? "" : "s"})`);
+      const replyConfig = telegramConfigForChat(config, chatId);
+
+      if (command === "/start") {
+        const added = addTelegramSubscriber(baseDir, chatId);
+        await sendTelegramMessage(
+          replyConfig,
+          formatStartMessage(),
+          { replyMarkup: buildCommandReplyKeyboard() },
+        );
+        log(
+          `${added ? "Subscribed" : "Confirmed subscription for"} ${chatId} and sent command keyboard`,
+        );
+      } else if (command === "/stats") {
+        log(`Handling /stats for ${chatId}`);
+        const count = await handleStatsCommand(config, chatId);
+        log(
+          `Sent /stats reply to ${chatId} (${count} message${count === 1 ? "" : "s"})`,
+        );
       } else if (command === "/runs") {
-        log("Handling /runs");
-        await handleRunsCommand(config);
-        log("Sent /runs reply");
+        log(`Handling /runs for ${chatId}`);
+        await handleRunsCommand(config, chatId);
+        log(`Sent /runs reply to ${chatId}`);
+      } else if (command === "/stop") {
+        const removed = removeTelegramSubscriber(baseDir, chatId);
+        await sendTelegramMessage(
+          replyConfig,
+          removed
+            ? "You are unsubscribed from automatic alerts. You can still use /stats and /runs, or press /start to subscribe again."
+            : "You are not subscribed to automatic alerts. Press /start to subscribe.",
+          { replyMarkup: buildCommandReplyKeyboard() },
+        );
+        log(`${removed ? "Unsubscribed" : "Subscription not found for"} ${chatId}`);
       }
     }
   }

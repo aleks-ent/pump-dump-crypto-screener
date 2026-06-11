@@ -3,7 +3,8 @@
 
 export default {
   telegramBotToken: "",
-  telegramChatId: "",
+  // Private chat that receives classification buttons and can classify alerts.
+  classifierTelegramChatId: "",
   fetch: {
     intervals: ["5m"],
   },

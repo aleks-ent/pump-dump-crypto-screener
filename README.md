@@ -26,13 +26,15 @@ pnpm install
 cp config.example.js config.js   # fill in Turso + Telegram (see table above)
 ```
 
-Edit `config.js` — at minimum `database`, `telegramBotToken`, and `telegramChatId`. Pump lookback and scan settings live under `pump` (defaults in [`config.example.js`](config.example.js)):
+Edit `config.js` — at minimum, configure `database`, `telegramBotToken`, and your private `classifierTelegramChatId`. Anyone who sends `/start` is automatically subscribed to alerts and can use `/stats` and `/runs`; only the configured chat can classify alerts. Pump lookback and scan settings live under `pump` (defaults in [`config.example.js`](config.example.js)):
 
 ```javascript
 database: {
   url: "libsql://screener-....turso.io",
   authToken: "...",
 },
+telegramBotToken: "123456789:ABC...",
+classifierTelegramChatId: "36772199",
 pump: {
   days: 5,        // lookback calendar days for download + scan
   minScore: 80,
@@ -107,7 +109,7 @@ Each PM2-driven run is an end-to-end pipeline:
 
 On disk: `data/market_stats/` (`archives/`, `api_fallback/raw/`, `reports/`). Cached series are skipped on repeat runs.
 
-Each new-pump alert has **Pump | Dump | None** buttons; `pump-bot` writes `pumps.classification` in the database.
+Alerts sent to `classifierTelegramChatId` have **Pump | Dump | None** buttons. `pump-bot` verifies the callback came from that chat before writing `pumps.classification`; other subscribers receive the same alerts without classification buttons.
 
 <p align="center">
   <img src="docs/assets/telegram-bot-alert.png" alt="Telegram bot — pump alert with peak score, window, TradingView link, and /stats /runs commands" width="400"/>
@@ -164,7 +166,7 @@ Useful flags: `--days`, `--exchanges`, `--quote-currencies`, `--discover`, `--js
 ## Workspace layout
 
 - `ecosystem.config.cjs` — PM2 process definitions (`pump-monitor`, `pump-bot`)
-- `config.js` — Turso, Telegram, `pump.*`, `fetch.intervals` (copy from `config.example.js`)
+- `config.js` — Turso, Telegram bot token, `pump.*`, `fetch.intervals` (copy from `config.example.js`)
 - `packages/core` — HTTP client, config, pull window
 - `packages/exchanges` — exchange adapters
 - `packages/storage` — NDJSON, gaps, manifest I/O

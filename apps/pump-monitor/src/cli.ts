@@ -26,6 +26,7 @@ import {
 import { runCommand } from "./run-step.js";
 import { assertScanCompleted, loadLastPumpScanManifest } from "./scan-validation.js";
 import { loadTelegramConfig, sendEpisodeAlerts, TELEGRAM_ALERT_DETAIL_LIMIT } from "./telegram.js";
+import { loadTelegramSubscriberIds } from "./telegram-subscribers.js";
 import { filterPumpsPastCooldown } from "./alert-cooldown.js";
 
 function loadPumpCandidates(path: string): PumpCandidate[] {
@@ -211,19 +212,46 @@ async function runMonitorPipeline(args: {
   const telegram = await loadTelegramConfig();
   if (!telegram) {
     console.error(
-      "New episodes found but Telegram is not configured. Set telegramBotToken and telegramChatId in config.js.",
+      "New episodes found but Telegram is not configured. Set telegramBotToken and classifierTelegramChatId in config.js.",
     );
     return;
   }
 
-  const messageCount = await sendEpisodeAlerts(telegram, pumpsToAlert, newDumps);
+  const subscriberIds = loadTelegramSubscriberIds(dataDir);
+  if (subscriberIds.length === 0) {
+    console.error("New episodes found but no Telegram users have subscribed with /start");
+    return;
+  }
+
+  let deliveredChats = 0;
+  let failedChats = 0;
+  let messageCount = 0;
+  for (const chatId of subscriberIds) {
+    try {
+      messageCount += await sendEpisodeAlerts(
+        { ...telegram, chatId },
+        pumpsToAlert,
+        newDumps,
+        { classificationButtons: chatId === telegram.classifierChatId },
+      );
+      deliveredChats += 1;
+    } catch (error) {
+      failedChats += 1;
+      console.error(
+        `Telegram alert failed for chat ${chatId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
   if (pumpsToAlert.length + newDumps.length > TELEGRAM_ALERT_DETAIL_LIMIT) {
     console.error(
-      `Telegram summary sent (${pumpsToAlert.length} new pump(s), ${newDumps.length} new dump(s) — individual alerts skipped, limit ${TELEGRAM_ALERT_DETAIL_LIMIT})`,
+      `Telegram summary sent to ${deliveredChats}/${subscriberIds.length} subscriber(s) (${pumpsToAlert.length} new pump(s), ${newDumps.length} new dump(s) — individual alerts skipped, limit ${TELEGRAM_ALERT_DETAIL_LIMIT})`,
     );
   } else {
     console.error(
-      `Telegram alert sent for ${pumpsToAlert.length} new pump(s) and ${newDumps.length} new dump(s) (${messageCount} message${messageCount === 1 ? "" : "s"})`,
+      `Telegram alerts sent to ${deliveredChats}/${subscriberIds.length} subscriber(s) for ${pumpsToAlert.length} new pump(s) and ${newDumps.length} new dump(s) (${messageCount} message${messageCount === 1 ? "" : "s"}${failedChats > 0 ? `, ${failedChats} failed chat(s)` : ""})`,
     );
   }
 }

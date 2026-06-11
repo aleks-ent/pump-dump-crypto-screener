@@ -1,17 +1,19 @@
 # Telegram setup
 
 Pump alerts (`pnpm pump:monitor`) and the interactive bot (`pnpm pump:bot`) need a
-Telegram bot token and a chat ID. Both go in `config.js` (copy from
+Telegram bot token and your classifier chat ID. They go in `config.js` (copy from
 [`config.example.js`](../config.example.js) if you have not already).
 
 ```javascript
 telegramBotToken: "123456789:ABCdefGHIjklMNOpqrsTUVwxyz",
-telegramChatId: "36772199",
+classifierTelegramChatId: "36772199",
 ```
 
-Only the configured chat can receive alerts, run `/stats` and `/runs`, and use
-classification buttons. This is intentional — the bot can read and update your pump
-database.
+Anyone who discovers the bot can use it without approval. Sending `/start`
+automatically subscribes that private chat or group to new pump and dump alerts.
+Subscribers can use `/stats` and `/runs`. Only `classifierTelegramChatId` can classify
+episodes; that chat's alerts include **Pump | Dump | None** buttons, while other
+subscribers receive alerts without those buttons.
 
 ## 1. Create a bot and get the token
 
@@ -20,81 +22,55 @@ database.
 3. BotFather replies with an HTTP API token, for example:
    `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`
 4. Put that value in `config.js` as `telegramBotToken`.
+5. Message [@userinfobot](https://t.me/userinfobot) to get your private chat ID, then
+   set it as `classifierTelegramChatId`.
+
+Use your private chat for `classifierTelegramChatId`. If you configure a group chat,
+anyone in that group who can press its classification buttons can classify alerts.
 
 Keep the token secret. Anyone with it can control your bot.
 
-## 2. Choose where alerts go
-
-Pick one:
-
-| Destination | When to use |
-|-------------|-------------|
-| **Direct message** | Alerts and commands only for you |
-| **Private group** | Share alerts with a small team (add the bot to the group) |
-
-Message the bot (DM) or post in the group so Telegram creates a chat the bot can see.
-
-## 3. Get your chat ID
-
-Telegram uses a numeric chat ID per conversation. Personal chats are positive;
-group chats are negative (e.g. `-1001234567890`).
-
-### Option A — `getUpdates` (recommended)
-
-With `telegramBotToken` set in `config.js` but `telegramChatId` still empty:
-
-1. Start the bot process so it can receive messages, or just send a message to the bot
-   in Telegram (`/start` or `hello`).
-2. Call the Bot API (replace `YOUR_TOKEN`):
-
-   ```bash
-   curl -s "https://api.telegram.org/botYOUR_TOKEN/getUpdates" | jq .
-   ```
-
-3. In the JSON, find the latest `message.chat.id` (or `callback_query.message.chat.id`
-   if you already clicked a button):
-
-   ```json
-   "chat": {
-     "id": 36772199,
-     "type": "private"
-   }
-   ```
-
-4. Copy that number (as a string) into `config.js` as `telegramChatId`.
-
-If the result is empty, send another message to the bot and run `getUpdates` again.
-
-### Option B — @userinfobot (personal chat only)
-
-For a **direct message** setup only:
-
-1. Message [@userinfobot](https://t.me/userinfobot).
-2. It replies with your user id — use that value as `telegramChatId` when the bot talks
-   to you in DM.
-
-This does not work for group chats; use Option A for groups.
-
-## 4. Verify
+## 2. Start the services
 
 ```bash
-# Interactive commands (/stats, /runs, classification buttons):
-pnpm pump:bot
-
-# In Telegram, send /stats or /runs to your bot or group.
-
-# End-to-end alert (needs Turso + market data):
-pnpm pump:monitor
+pnpm build
+pm2 start ecosystem.config.cjs
 ```
 
-If commands are ignored, check the bot log for `Ignored message from unauthorized chat`
-— the ID in the log must match `telegramChatId` in `config.js`.
+The bot and monitor must both be running: the bot receives commands and button clicks,
+while the monitor scans markets and broadcasts new alerts.
+
+## 3. Subscribe and share
+
+1. Open `t.me/<bot_username>`.
+2. Press **Start** or send `/start`.
+3. The chat is subscribed immediately and receives the command keyboard.
+4. Share the same link with other people. No configuration change or restart is needed.
+
+Available commands:
+
+| Command | Action |
+|---------|--------|
+| `/start` | Subscribe to automatic pump and dump alerts |
+| `/stats` | Show the latest detected pumps |
+| `/runs` | Show recent scanner runs and status |
+| `/stop` | Unsubscribe from automatic alerts; commands still work |
+
+Groups work too: add the bot to a group and send `/start` there. A group is one
+subscription, so `/stop` from any group member unsubscribes that group.
+
+Subscriber chat IDs are stored locally in
+`data/market_stats/reports/telegram_subscribers.json` and survive bot restarts.
+
+The commands query your Turso database, so public usage increases database and Telegram
+API traffic. Do not publish the bot token itself.
 
 ## Troubleshooting
 
 | Problem | Fix |
 |---------|-----|
-| `getUpdates` returns `[]` | Send a new message to the bot, then retry |
 | Bot does not reply in a group | Add the bot to the group; some groups need `/setprivacy` disabled in BotFather (`/setprivacy` → your bot → **Disable**) so it sees all messages |
-| Wrong chat ID | Use the `chat.id` from the same chat where you want alerts, not your user id from a different context |
+| User does not receive alerts | Send `/start` in that exact private chat or group |
+| User no longer wants alerts | Send `/stop`; `/stats` and `/runs` remain available |
+| Classifier chat does not see buttons | Send `/start` in that chat and verify `classifierTelegramChatId` matches its chat ID |
 | Alerts work, buttons do not | Run `pnpm pump:bot` alongside or after `pump:monitor` |

@@ -1,13 +1,21 @@
 import { pathToFileURL } from "node:url";
 import { resolveRepoPath } from "@screener/core";
 import type { MonitorRunRecord, PumpClassification, StoredPump } from "@screener/db";
+import { normalizeTelegramChatId } from "./telegram-subscribers.js";
 import {
   buildClassificationKeyboard,
   classificationLabel,
 } from "./telegram-callback.js";
 
-export interface TelegramConfig {
+export interface TelegramApiConfig {
   botToken: string;
+}
+
+export interface TelegramRuntimeConfig extends TelegramApiConfig {
+  classifierChatId: string;
+}
+
+export interface TelegramConfig extends TelegramApiConfig {
   chatId: string;
 }
 
@@ -23,6 +31,8 @@ export interface ReplyKeyboardMarkup {
 
 export type TelegramReplyMarkup = InlineKeyboardMarkup | ReplyKeyboardMarkup;
 
+export { normalizeTelegramChatId };
+
 export function buildCommandReplyKeyboard(): ReplyKeyboardMarkup {
   return {
     keyboard: [[{ text: "/stats" }, { text: "/runs" }]],
@@ -31,16 +41,36 @@ export function buildCommandReplyKeyboard(): ReplyKeyboardMarkup {
   };
 }
 
-export async function loadTelegramConfig(): Promise<TelegramConfig | null> {
+export function formatStartMessage(): string {
+  return [
+    "<b>Pump &amp; Dump Crypto Screener</b>",
+    "",
+    "This bot scans Binance and Bybit market data for unusual crypto pump activity and provides TradingView chart links for detected events.",
+    "",
+    "<b>How to use</b>",
+    "/stats — view the latest detected pumps",
+    "/runs — check recent scanner runs and status",
+    "/stop — unsubscribe from automatic alerts",
+    "",
+    "You are subscribed to new pump and dump alerts after pressing Start.",
+    "Use the buttons below at any time.",
+    "Contact: aleksent@yahoo.com",
+    "<i>Signals are informational only, not financial advice.</i>",
+  ].join("\n");
+}
+
+export async function loadTelegramConfig(): Promise<TelegramRuntimeConfig | null> {
   const mod = await import(pathToFileURL(resolveRepoPath("config.js")).href);
   const cfg = (mod.default ?? mod) as {
     telegramBotToken?: string;
-    telegramChatId?: string;
+    classifierTelegramChatId?: string | number;
   };
   const botToken = cfg.telegramBotToken?.trim() ?? "";
-  const chatId = cfg.telegramChatId?.trim() ?? "";
-  if (!botToken || !chatId) return null;
-  return { botToken, chatId };
+  const classifierChatId = normalizeTelegramChatId(
+    cfg.classifierTelegramChatId,
+  );
+  if (!botToken || !classifierChatId) return null;
+  return { botToken, classifierChatId };
 }
 
 function escapeHtml(text: string): string {
@@ -270,7 +300,11 @@ function chunkEpisodeMessages(
   );
 }
 
-async function telegramPost(config: TelegramConfig, method: string, body: Record<string, unknown>) {
+async function telegramPost(
+  config: TelegramApiConfig,
+  method: string,
+  body: Record<string, unknown>,
+) {
   const url = `https://api.telegram.org/bot${config.botToken}/${method}`;
   const response = await fetch(url, {
     method: "POST",
@@ -301,27 +335,38 @@ export async function sendTelegramMessage(
 export async function sendPumpAlertMessage(
   config: TelegramConfig,
   pump: StoredPump,
+  opts?: { classificationButtons?: boolean },
 ): Promise<void> {
-  await sendTelegramMessage(config, formatPumpAlertMessage(pump), {
-    replyMarkup: buildClassificationKeyboard(pump.index),
-  });
+  await sendTelegramMessage(
+    config,
+    formatPumpAlertMessage(pump),
+    opts?.classificationButtons
+      ? { replyMarkup: buildClassificationKeyboard(pump.index) }
+      : undefined,
+  );
 }
 
 export async function sendDumpAlertMessage(
   config: TelegramConfig,
   dump: StoredPump,
+  opts?: { classificationButtons?: boolean },
 ): Promise<void> {
-  await sendTelegramMessage(config, formatDumpAlertMessage(dump), {
-    replyMarkup: buildClassificationKeyboard(dump.index),
-  });
+  await sendTelegramMessage(
+    config,
+    formatDumpAlertMessage(dump),
+    opts?.classificationButtons
+      ? { replyMarkup: buildClassificationKeyboard(dump.index) }
+      : undefined,
+  );
 }
 
 export async function sendPumpAlert(
   config: TelegramConfig,
   pumps: StoredPump[],
+  opts?: { classificationButtons?: boolean },
 ): Promise<number> {
   for (const pump of pumps) {
-    await sendPumpAlertMessage(config, pump);
+    await sendPumpAlertMessage(config, pump, opts);
   }
   return pumps.length;
 }
@@ -344,7 +389,7 @@ export async function sendEpisodeAlerts(
   config: TelegramConfig,
   pumps: StoredPump[],
   dumps: StoredPump[],
-  opts?: { detailLimit?: number },
+  opts?: { detailLimit?: number; classificationButtons?: boolean },
 ): Promise<number> {
   const limit = opts?.detailLimit ?? TELEGRAM_ALERT_DETAIL_LIMIT;
   const total = pumps.length + dumps.length;
@@ -358,18 +403,18 @@ export async function sendEpisodeAlerts(
 
   let count = 0;
   for (const pump of pumps) {
-    await sendPumpAlertMessage(config, pump);
+    await sendPumpAlertMessage(config, pump, opts);
     count += 1;
   }
   for (const dump of dumps) {
-    await sendDumpAlertMessage(config, dump);
+    await sendDumpAlertMessage(config, dump, opts);
     count += 1;
   }
   return count;
 }
 
 export async function answerCallbackQuery(
-  config: TelegramConfig,
+  config: TelegramApiConfig,
   callbackQueryId: string,
   text?: string,
 ): Promise<void> {
@@ -380,7 +425,7 @@ export async function answerCallbackQuery(
 }
 
 export async function editMessageText(
-  config: TelegramConfig,
+  config: TelegramApiConfig,
   chatId: string,
   messageId: number,
   text: string,

@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import type { PumpEpisode } from "@screener/pump-detector";
 import { createMemoryDbClient, PumpRepository } from "@screener/db";
 import {
@@ -6,9 +6,12 @@ import {
   formatMonitorRunsMessage,
   formatPumpAlertMessage,
   formatPumpStatsMessages,
+  formatStartMessage,
   formatEpisodeStatsMessages,
   formatEpisodeOverflowAlert,
   formatDumpStatsMessages,
+  normalizeTelegramChatId,
+  sendEpisodeAlerts,
 } from "./telegram.js";
 import { buildClassificationKeyboard } from "./telegram-callback.js";
 
@@ -79,6 +82,32 @@ describe("buildCommandReplyKeyboard", () => {
     expect(keyboard.keyboard).toEqual([[{ text: "/stats" }, { text: "/runs" }]]);
     expect(keyboard.resize_keyboard).toBe(true);
     expect(keyboard.is_persistent).toBe(true);
+  });
+});
+
+describe("formatStartMessage", () => {
+  it("introduces the bot and explains the public commands", () => {
+    const message = formatStartMessage();
+    expect(message).toContain("Pump &amp; Dump Crypto Screener");
+    expect(message).toContain("Binance and Bybit");
+    expect(message).toContain("/stats");
+    expect(message).toContain("/runs");
+    expect(message).toContain("/stop");
+    expect(message).toContain("subscribed");
+    expect(message).toContain("aleksent@yahoo.com");
+    expect(message).toContain("not financial advice");
+  });
+});
+
+describe("normalizeTelegramChatId", () => {
+  it("normalizes valid private and group chat IDs", () => {
+    expect(normalizeTelegramChatId(" 36772199 ")).toBe("36772199");
+    expect(normalizeTelegramChatId(-1001234567890)).toBe("-1001234567890");
+  });
+
+  it("rejects malformed or unsafe chat IDs", () => {
+    expect(normalizeTelegramChatId("friend")).toBeNull();
+    expect(normalizeTelegramChatId(Number.MAX_SAFE_INTEGER + 1)).toBeNull();
   });
 });
 
@@ -181,5 +210,44 @@ describe("formatEpisodeOverflowAlert", () => {
     expect(message).toContain("15 total");
     expect(message).toContain("exceeds 5");
     expect(message).toContain("/stats");
+  });
+});
+
+describe("classification button delivery", () => {
+  it("adds buttons only when classification is enabled for the recipient", async () => {
+    const client = createMemoryDbClient();
+    const repo = new PumpRepository(client);
+    await repo.applySchema();
+    const { newPumps } = await repo.upsertPumpEpisodes([
+      samplePump("WLD/USDT", Date.parse("2026-06-07T00:50:00.000Z"), 100),
+    ]);
+    const pump = newPumps[0]!;
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await sendEpisodeAlerts(
+        { botToken: "token", chatId: "public-user" },
+        [pump],
+        [],
+      );
+      await sendEpisodeAlerts(
+        { botToken: "token", chatId: "admin-user" },
+        [pump],
+        [],
+        { classificationButtons: true },
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    const publicBody = JSON.parse(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body),
+    ) as Record<string, unknown>;
+    const adminBody = JSON.parse(
+      String((fetchMock.mock.calls[1]?.[1] as RequestInit).body),
+    ) as Record<string, unknown>;
+    expect(publicBody.reply_markup).toBeUndefined();
+    expect(adminBody.reply_markup).toEqual(buildClassificationKeyboard(pump.index));
   });
 });

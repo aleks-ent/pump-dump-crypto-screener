@@ -6,13 +6,13 @@ async function main(): Promise<void> {
   const program = new Command();
   program
     .name("pump-bot")
-    .description("Telegram bot for pump index commands (/stats, /runs)")
+    .description("Telegram bot for pump index commands (/start, /stats, /runs)")
     .parse(process.argv.slice(2).filter((a) => a !== "--"), { from: "user" });
 
   const config = await loadPumpBotConfig();
   if (!config) {
     throw new Error(
-      "Telegram bot not configured. Set telegramBotToken and telegramChatId in config.js.",
+      "Telegram bot not configured. Set telegramBotToken and classifierTelegramChatId in config.js.",
     );
   }
 
