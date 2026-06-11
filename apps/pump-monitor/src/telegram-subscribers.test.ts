@@ -1,12 +1,18 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  addTelegramSubscriber,
-  loadTelegramSubscriberIds,
+  loadLegacyTelegramSubscriberIds,
+  markLegacyTelegramSubscribersMigrated,
+  migratedTelegramSubscribersPath,
   normalizeTelegramChatId,
-  removeTelegramSubscriber,
   resolveTelegramAlertChatIds,
   telegramSubscribersPath,
 } from "./telegram-subscribers.js";
@@ -36,25 +42,37 @@ describe("Telegram subscribers", () => {
     expect(normalizeTelegramChatId(Number.MAX_SAFE_INTEGER + 1)).toBeNull();
   });
 
-  it("adds, deduplicates, and removes subscribers", () => {
+  it("loads and deduplicates legacy subscriber IDs", () => {
     const baseDir = createTempDir();
-    expect(loadTelegramSubscriberIds(baseDir)).toEqual([]);
-    expect(addTelegramSubscriber(baseDir, "12345")).toBe(true);
-    expect(addTelegramSubscriber(baseDir, "12345")).toBe(false);
-    expect(addTelegramSubscriber(baseDir, "-10098765")).toBe(true);
-    expect(loadTelegramSubscriberIds(baseDir)).toEqual(["12345", "-10098765"]);
-    expect(removeTelegramSubscriber(baseDir, "12345")).toBe(true);
-    expect(removeTelegramSubscriber(baseDir, "12345")).toBe(false);
-    expect(loadTelegramSubscriberIds(baseDir)).toEqual(["-10098765"]);
+    mkdirSync(join(baseDir, "reports"), { recursive: true });
+    writeFileSync(
+      telegramSubscribersPath(baseDir),
+      JSON.stringify({
+        chatIds: ["12345", "12345", -10098765, "invalid"],
+      }),
+    );
+    expect(loadLegacyTelegramSubscriberIds(baseDir)).toEqual([
+      "12345",
+      "-10098765",
+    ]);
   });
 
-  it("stores subscriber IDs in the reports directory", () => {
+  it("marks the legacy file after migration", () => {
     const baseDir = createTempDir();
-    addTelegramSubscriber(baseDir, "12345");
-    const stored = JSON.parse(
-      readFileSync(telegramSubscribersPath(baseDir), "utf-8"),
-    ) as { chatIds: string[] };
-    expect(stored.chatIds).toEqual(["12345"]);
+    mkdirSync(join(baseDir, "reports"), { recursive: true });
+    writeFileSync(
+      telegramSubscribersPath(baseDir),
+      JSON.stringify({ chatIds: ["12345"] }),
+    );
+
+    markLegacyTelegramSubscribersMigrated(baseDir);
+
+    expect(loadLegacyTelegramSubscriberIds(baseDir)).toEqual([]);
+    expect(
+      JSON.parse(
+        readFileSync(migratedTelegramSubscribersPath(baseDir), "utf-8"),
+      ),
+    ).toEqual({ chatIds: ["12345"] });
   });
 
   it("always includes the classifier chat in alert recipients", () => {

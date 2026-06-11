@@ -1,10 +1,5 @@
-import {
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync, renameSync } from "node:fs";
+import { join } from "node:path";
 
 interface TelegramSubscribersFile {
   chatIds?: unknown;
@@ -24,7 +19,11 @@ export function telegramSubscribersPath(baseDir: string): string {
   return join(baseDir, "reports", "telegram_subscribers.json");
 }
 
-export function loadTelegramSubscriberIds(baseDir: string): string[] {
+export function migratedTelegramSubscribersPath(baseDir: string): string {
+  return `${telegramSubscribersPath(baseDir)}.migrated`;
+}
+
+export function loadLegacyTelegramSubscriberIds(baseDir: string): string[] {
   try {
     const parsed = JSON.parse(
       readFileSync(telegramSubscribersPath(baseDir), "utf-8"),
@@ -49,30 +48,8 @@ export function resolveTelegramAlertChatIds(
   return [...new Set([classifierChatId, ...subscriberIds])];
 }
 
-function saveTelegramSubscriberIds(baseDir: string, chatIds: readonly string[]): void {
-  const path = telegramSubscribersPath(baseDir);
-  const tempPath = `${path}.tmp-${process.pid}`;
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(
-    tempPath,
-    `${JSON.stringify({ chatIds: [...chatIds] }, null, 2)}\n`,
-    "utf-8",
-  );
-  renameSync(tempPath, path);
-}
-
-export function addTelegramSubscriber(baseDir: string, chatId: string): boolean {
-  const subscribers = new Set(loadTelegramSubscriberIds(baseDir));
-  const previousSize = subscribers.size;
-  subscribers.add(chatId);
-  if (subscribers.size === previousSize) return false;
-  saveTelegramSubscriberIds(baseDir, [...subscribers]);
-  return true;
-}
-
-export function removeTelegramSubscriber(baseDir: string, chatId: string): boolean {
-  const subscribers = new Set(loadTelegramSubscriberIds(baseDir));
-  if (!subscribers.delete(chatId)) return false;
-  saveTelegramSubscriberIds(baseDir, [...subscribers]);
-  return true;
+export function markLegacyTelegramSubscribersMigrated(baseDir: string): void {
+  const source = telegramSubscribersPath(baseDir);
+  if (!existsSync(source)) return;
+  renameSync(source, migratedTelegramSubscribersPath(baseDir));
 }

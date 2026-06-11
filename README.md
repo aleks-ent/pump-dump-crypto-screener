@@ -18,7 +18,7 @@ You need two free accounts (~2 minutes each):
 
 | Service | Why | Setup |
 |---------|-----|--------|
-| **[Turso](https://turso.tech)** | Stores detected pumps and monitor run history | [Turso CLI](https://docs.turso.tech/cli): `turso db create screener` → copy URL + auth token into `config.js` |
+| **[Turso](https://turso.tech)** | Stores pumps, monitor runs, and Telegram subscribers | [Turso CLI](https://docs.turso.tech/cli): `turso db create screener` → copy URL + auth token into `config.js` |
 | **Telegram** | Pump alerts and `/stats` / `/runs` bot | [@BotFather](https://t.me/BotFather) → `/newbot` → see [docs/telegram_setup.md](docs/telegram_setup.md) |
 
 ### 1. Install dependencies and configure

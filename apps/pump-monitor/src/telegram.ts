@@ -33,6 +33,44 @@ export type TelegramReplyMarkup = InlineKeyboardMarkup | ReplyKeyboardMarkup;
 
 export { normalizeTelegramChatId };
 
+interface TelegramErrorPayload {
+  error_code?: unknown;
+  description?: unknown;
+}
+
+export class TelegramApiError extends Error {
+  constructor(
+    readonly method: string,
+    readonly status: number,
+    readonly errorCode: number,
+    readonly description: string,
+  ) {
+    super(
+      `Telegram ${method} failed (${status}/${errorCode}): ${description}`,
+    );
+    this.name = "TelegramApiError";
+  }
+}
+
+export function isPermanentTelegramRecipientError(error: unknown): boolean {
+  if (!(error instanceof TelegramApiError)) return false;
+
+  const description = error.description.toLowerCase();
+  if (error.errorCode === 403) {
+    return [
+      "bot was blocked by the user",
+      "user is deactivated",
+      "bot was kicked",
+      "bot is not a member",
+    ].some((message) => description.includes(message));
+  }
+  return (
+    error.errorCode === 400 &&
+    (description.includes("chat not found") ||
+      description.includes("user not found"))
+  );
+}
+
 export function buildCommandReplyKeyboard(): ReplyKeyboardMarkup {
   return {
     keyboard: [[{ text: "/stats" }, { text: "/runs" }]],
@@ -314,7 +352,24 @@ async function telegramPost(
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Telegram ${method} failed (${response.status}): ${text}`);
+    let payload: TelegramErrorPayload = {};
+    try {
+      payload = JSON.parse(text) as TelegramErrorPayload;
+    } catch {
+      // Keep the raw response when Telegram does not return JSON.
+    }
+    const errorCode =
+      typeof payload.error_code === "number"
+        ? payload.error_code
+        : response.status;
+    const description =
+      typeof payload.description === "string" ? payload.description : text;
+    throw new TelegramApiError(
+      method,
+      response.status,
+      errorCode,
+      description,
+    );
   }
 }
 

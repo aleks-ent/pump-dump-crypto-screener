@@ -18,6 +18,18 @@ subscribers receive alerts without those buttons.
 The classifier chat always receives alerts, even before it sends `/start`. Other chats
 must send `/start` to subscribe.
 
+After deploying the schema change to the VDS, apply it to Turso once:
+
+```bash
+pnpm db:bootstrap
+```
+
+The bot and monitor also apply the schema defensively when they start. Both processes
+insert `classifierTelegramChatId` into `telegram_subscribers` with
+`INSERT OR IGNORE`, so it is always in the stored recipient list without duplicates.
+Running `./update.sh` performs the build and `pnpm db:bootstrap` automatically before
+restarting PM2.
+
 ## 1. Create a bot and get the token
 
 1. Open Telegram and message [@BotFather](https://t.me/BotFather).
@@ -59,11 +71,21 @@ Available commands:
 | `/runs` | Show recent scanner runs and status |
 | `/stop` | Unsubscribe from automatic alerts; commands still work |
 
+`/stop` does not remove `classifierTelegramChatId`; that chat is intentionally always
+subscribed.
+
 Groups work too: add the bot to a group and send `/start` there. A group is one
 subscription, so `/stop` from any group member unsubscribes that group.
 
-Subscriber chat IDs are stored locally in
-`data/market_stats/reports/telegram_subscribers.json` and survive bot restarts.
+Subscriber chat IDs are stored in the shared Turso database and survive bot restarts
+and code deployments. Existing IDs from the old
+`data/market_stats/reports/telegram_subscribers.json` file are imported once
+automatically.
+
+If Telegram reports that a user blocked the bot, deactivated their account, or that a
+chat no longer exists, the monitor removes that chat from the subscriber table and
+continues sending to everyone else. Temporary network errors and rate limits do not
+unsubscribe users.
 
 The commands query your Turso database, so public usage increases database and Telegram
 API traffic. Do not publish the bot token itself.

@@ -53,7 +53,7 @@ describe("Telegram classifier chat", () => {
           telegram: { botToken: "token", classifierChatId: "36772199" },
           pump: { minScore: 80, minDumpScore: 55 },
         },
-        { log: vi.fn() },
+        { log: vi.fn(), migrateLegacySubscribers: false },
       );
       await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     } finally {

@@ -6,13 +6,15 @@ import {
   loadDatabaseConfig,
   MonitorRunRepository,
   PumpRepository,
+  TelegramSubscriberRepository,
   type PumpClassification,
 } from "@screener/db";
 import { findRepoRoot, resolveRepoPath } from "@screener/core";
 import { parseClassificationCallback } from "./telegram-callback.js";
+import { ensureClassifierTelegramRecipient } from "./telegram-delivery.js";
 import {
-  addTelegramSubscriber,
-  removeTelegramSubscriber,
+  loadLegacyTelegramSubscriberIds,
+  markLegacyTelegramSubscribersMigrated,
 } from "./telegram-subscribers.js";
 import {
   answerCallbackQuery,
@@ -100,6 +102,50 @@ async function createMonitorRunRepository(): Promise<MonitorRunRepository> {
   const repo = new MonitorRunRepository(client);
   await new PumpRepository(client).applySchema();
   return repo;
+}
+
+async function withTelegramSubscriberRepository<T>(
+  action: (repo: TelegramSubscriberRepository) => Promise<T>,
+): Promise<T> {
+  const dbConfig = await loadDatabaseConfig();
+  const client = createDbClient(dbConfig);
+  try {
+    await new PumpRepository(client).applySchema();
+    return await action(new TelegramSubscriberRepository(client));
+  } finally {
+    client.close();
+  }
+}
+
+async function initializeTelegramSubscribers(
+  baseDir: string,
+  classifierChatId: string,
+  log: (msg: string) => void,
+): Promise<void> {
+  const legacyChatIds = loadLegacyTelegramSubscriberIds(baseDir);
+  const subscribedAt = new Date().toISOString();
+  const { classifierAdded, migrated } =
+    await withTelegramSubscriberRepository(async (repo) => {
+      const classifierAdded = await ensureClassifierTelegramRecipient(
+        repo,
+        classifierChatId,
+        subscribedAt,
+      );
+      let count = 0;
+      for (const chatId of legacyChatIds) {
+        if (await repo.subscribe(chatId, subscribedAt)) count += 1;
+      }
+      return { classifierAdded, migrated: count };
+    });
+  if (legacyChatIds.length > 0) {
+    markLegacyTelegramSubscribersMigrated(baseDir);
+  }
+  if (classifierAdded) {
+    log(`Added classifier Telegram chat ${classifierChatId} to subscribers`);
+  }
+  if (migrated > 0) {
+    log(`Migrated ${migrated} legacy Telegram subscriber(s) to the database`);
+  }
 }
 
 function offsetPath(baseDir: string): string {
@@ -251,7 +297,10 @@ function labelAck(classification: PumpClassification): string {
 
 export async function runTelegramBot(
   config: PumpBotConfig,
-  opts?: { log?: (msg: string) => void },
+  opts?: {
+    log?: (msg: string) => void;
+    migrateLegacySubscribers?: boolean;
+  },
 ): Promise<never> {
   const log = opts?.log ?? ((msg: string) => console.error(msg));
   const repoRoot = findRepoRoot();
@@ -261,6 +310,13 @@ export async function runTelegramBot(
   log(
     `Public Telegram bot listening (/start, /stats, /runs, /stop; classification restricted to chat ${config.telegram.classifierChatId})`,
   );
+  if (opts?.migrateLegacySubscribers !== false) {
+    await initializeTelegramSubscribers(
+      baseDir,
+      config.telegram.classifierChatId,
+      log,
+    );
+  }
 
   for (;;) {
     const updates = await fetchUpdates(config.telegram, offset);
@@ -281,7 +337,9 @@ export async function runTelegramBot(
       const replyConfig = telegramConfigForChat(config, chatId);
 
       if (command === "/start") {
-        const added = addTelegramSubscriber(baseDir, chatId);
+        const added = await withTelegramSubscriberRepository((repo) =>
+          repo.subscribe(chatId, new Date().toISOString()),
+        );
         await sendTelegramMessage(
           replyConfig,
           formatStartMessage(),
@@ -301,7 +359,18 @@ export async function runTelegramBot(
         await handleRunsCommand(config, chatId);
         log(`Sent /runs reply to ${chatId}`);
       } else if (command === "/stop") {
-        const removed = removeTelegramSubscriber(baseDir, chatId);
+        if (chatId === config.telegram.classifierChatId) {
+          await sendTelegramMessage(
+            replyConfig,
+            "This is the classifier chat, so it always remains subscribed to automatic alerts.",
+            { replyMarkup: buildCommandReplyKeyboard() },
+          );
+          log(`Kept classifier Telegram chat ${chatId} subscribed`);
+          continue;
+        }
+        const removed = await withTelegramSubscriberRepository((repo) =>
+          repo.unsubscribe(chatId),
+        );
         await sendTelegramMessage(
           replyConfig,
           removed

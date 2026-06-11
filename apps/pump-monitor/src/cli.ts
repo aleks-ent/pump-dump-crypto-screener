@@ -7,6 +7,7 @@ import {
   loadDatabaseConfig,
   MonitorRunRepository,
   PumpRepository,
+  TelegramSubscriberRepository,
 } from "@screener/db";
 import {
   defaultWorkerConcurrency,
@@ -25,9 +26,12 @@ import {
 } from "@screener/pump-detector";
 import { runCommand } from "./run-step.js";
 import { assertScanCompleted, loadLastPumpScanManifest } from "./scan-validation.js";
+import {
+  cleanupUnavailableTelegramRecipient,
+  ensureClassifierTelegramRecipient,
+} from "./telegram-delivery.js";
 import { loadTelegramConfig, sendEpisodeAlerts, TELEGRAM_ALERT_DETAIL_LIMIT } from "./telegram.js";
 import {
-  loadTelegramSubscriberIds,
   resolveTelegramAlertChatIds,
 } from "./telegram-subscribers.js";
 import { filterPumpsPastCooldown } from "./alert-cooldown.js";
@@ -71,6 +75,7 @@ async function main(): Promise<void> {
   const client = createDbClient(dbConfig);
   const pumpRepo = new PumpRepository(client);
   const runRepo = new MonitorRunRepository(client);
+  const subscriberRepo = new TelegramSubscriberRepository(client);
   await pumpRepo.applySchema();
 
   const runId = await runRepo.startRun(new Date().toISOString());
@@ -87,6 +92,7 @@ async function main(): Promise<void> {
       useScanCache,
       opts,
       pumpRepo,
+      subscriberRepo,
       onNewPumpsCount: (count) => {
         newPumpsCount = count;
       },
@@ -110,9 +116,10 @@ async function runMonitorPipeline(args: {
     cacheDir?: string;
   };
   pumpRepo: PumpRepository;
+  subscriberRepo: TelegramSubscriberRepository;
   onNewPumpsCount: (count: number) => void;
 }): Promise<void> {
-  const { days, repoRoot, dataDir, eventsPath, minScore, minDumpScore, useScanCache, opts, pumpRepo, onNewPumpsCount } =
+  const { days, repoRoot, dataDir, eventsPath, minScore, minDumpScore, useScanCache, opts, pumpRepo, subscriberRepo, onNewPumpsCount } =
     args;
 
   console.error(`Pump monitor: ${days}-day window (config.js pump.days)`);
@@ -220,9 +227,13 @@ async function runMonitorPipeline(args: {
     return;
   }
 
+  await ensureClassifierTelegramRecipient(
+    subscriberRepo,
+    telegram.classifierChatId,
+  );
   const recipientIds = resolveTelegramAlertChatIds(
     telegram.classifierChatId,
-    loadTelegramSubscriberIds(dataDir),
+    await subscriberRepo.listChatIds(),
   );
 
   let deliveredChats = 0;
@@ -239,6 +250,30 @@ async function runMonitorPipeline(args: {
       deliveredChats += 1;
     } catch (error) {
       failedChats += 1;
+      const cleanup = await cleanupUnavailableTelegramRecipient(
+        subscriberRepo,
+        chatId,
+        error,
+      );
+      if (cleanup.permanent) {
+        if (cleanup.cleanupError) {
+          console.error(
+            `Failed to remove Telegram chat ${chatId} from subscribers: ${
+              cleanup.cleanupError instanceof Error
+                ? cleanup.cleanupError.message
+                : String(cleanup.cleanupError)
+            }`,
+          );
+        } else if (cleanup.removed) {
+          console.error(
+            `Removed permanently unavailable Telegram chat ${chatId}`,
+          );
+        } else {
+          console.error(
+            `Permanently unavailable Telegram chat ${chatId} was not present in the subscriber table`,
+          );
+        }
+      }
       console.error(
         `Telegram alert failed for chat ${chatId}: ${
           error instanceof Error ? error.message : String(error)

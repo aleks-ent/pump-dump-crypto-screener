@@ -12,6 +12,7 @@ export {
   MonitorRunRepository,
   type MonitorRunRecord,
 } from "./monitor-runs/repository.js";
+export { TelegramSubscriberRepository } from "./telegram-subscribers/repository.js";
 export { importLegacyPumpIndex } from "./pumps/import-json.js";
 export type {
   PumpClassification,
