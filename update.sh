@@ -3,6 +3,9 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+echo "==> stop.sh"
+./stop.sh
+
 echo "==> git pull"
 git pull
 
@@ -19,5 +22,3 @@ else
   pm2 start ecosystem.config.cjs
 fi
 
-echo "==> pm2 monit"
-pm2 monit
