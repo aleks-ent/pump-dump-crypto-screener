@@ -6,6 +6,8 @@
 
 TypeScript pnpm monorepo for pulling 1m/5m market statistics and bulk kline archives from Binance and Bybit, detecting pump/dump regimes, and alerting via Telegram.
 
+**Try the live bot:** [Open @pumpdumpscreenerautobot on Telegram](https://t.me/pumpdumpscreenerautobot)
+
 **Requirements:** Node.js 20+, pnpm 9+, [pm2](https://pm2.keymetrics.io/) (process manager for production).
 
 ## How to set up
