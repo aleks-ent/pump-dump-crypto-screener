@@ -15,7 +15,6 @@ import {
   editMessageText,
   formatClassifiedPumpMessage,
   formatMonitorRunsMessage,
-  formatEpisodeStatsMessages,
   formatPumpStatsMessages,
   buildCommandReplyKeyboard,
   sendTelegramMessage,
@@ -144,22 +143,14 @@ export async function handleStatsCommand(config: PumpBotConfig): Promise<number>
     limit: STATS_EPISODES_LIMIT,
     episodeType: "pump",
   });
-  const dumps = await repo.listStoredPumps({
-    minScore: config.pump.minDumpScore,
-    limit: STATS_EPISODES_LIMIT,
-    episodeType: "dump",
-  });
-  const messages = formatEpisodeStatsMessages(
+  const messages = formatPumpStatsMessages(
     pumps,
-    dumps,
     config.pump.minScore,
-    config.pump.minDumpScore,
     STATS_EPISODES_LIMIT,
   );
-  const replyConfig = { ...config.telegram };
 
   for (const message of messages) {
-    await sendTelegramMessage(replyConfig, message);
+    await sendTelegramMessage(config.telegram, message);
   }
   return messages.length;
 }

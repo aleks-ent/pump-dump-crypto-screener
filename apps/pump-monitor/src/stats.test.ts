@@ -122,7 +122,9 @@ describe("formatMonitorRunsMessage", () => {
 
 describe("formatPumpStatsMessages", () => {
   it("returns empty-state message", () => {
-    expect(formatPumpStatsMessages([], 80)).toEqual(["No pumps with score &gt; 80 in index."]);
+    expect(formatPumpStatsMessages([], 80)).toEqual([
+      "No pumps with score &gt; 80 stored yet.",
+    ]);
   });
 
   it("orders recent first in output", async () => {

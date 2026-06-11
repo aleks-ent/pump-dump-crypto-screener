@@ -193,7 +193,7 @@ export class PumpRepository {
     if (clauses.length > 0) {
       sql += ` WHERE ${clauses.join(" AND ")}`;
     }
-    sql += " ORDER BY start_ms DESC";
+    sql += " ORDER BY start_utc DESC";
     if (opts?.limit != null) {
       sql += " LIMIT ?";
       args.push(opts.limit);

@@ -199,7 +199,7 @@ export function formatPumpStatsMessages(
     pumps,
     formatPumpStatsHeader,
     (min, lim) => formatPumpStatsHeader(min, lim, { index: 999, total: 999 }),
-    (min) => `No pumps with score &gt; ${min} in index.`,
+    (min) => `No pumps with score &gt; ${min} stored yet.`,
     minScore,
     limit,
   );
@@ -336,7 +336,7 @@ export function formatEpisodeOverflowAlert(
     "<b>Many new episodes detected</b>",
     `Pumps: ${pumpCount} · Dumps: ${dumpCount} (${total} total)`,
     `Did not send individual alerts because the count exceeds ${limit}.`,
-    "Use /stats to browse the latest stored episodes.",
+    "Use /stats to see the 5 most recent stored pumps.",
   ].join("\n");
 }
 
