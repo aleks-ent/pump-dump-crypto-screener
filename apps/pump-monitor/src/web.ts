@@ -10,8 +10,8 @@ import {
 } from "@screener/db";
 import { resolveRepoPath } from "@screener/core";
 
-const DEFAULT_WEB_PORT = 80;
-const DEFAULT_WEB_HOST = "0.0.0.0";
+const DEFAULT_WEB_PORT = 3000;
+const DEFAULT_WEB_HOST = "127.0.0.1";
 const PUMP_LIMIT = 10;
 
 interface WebCliOptions {
@@ -278,8 +278,8 @@ async function main(): Promise<void> {
   program
     .name("pump-web")
     .description("Serve a basic HTTP page with the last 10 stored pump episodes")
-    .option("--port <port>", "HTTP port (default: 80)")
-    .option("--host <host>", "HTTP bind host (default: 0.0.0.0)");
+    .option("--port <port>", "HTTP port (default: 3000)")
+    .option("--host <host>", "HTTP bind host (default: 127.0.0.1)");
 
   program.parse(process.argv.slice(2).filter((arg) => arg !== "--"), {
     from: "user",

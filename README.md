@@ -38,8 +38,8 @@ database: {
 telegramBotToken: "123456789:ABC...",
 classifierTelegramChatId: "36772199",
 web: {
-  port: 80,       // plain HTTP; no HTTPS or external web server
-  host: "0.0.0.0",
+  port: 3000,    // local app server; nginx terminates public HTTP/HTTPS
+  host: "127.0.0.1",
 },
 pump: {
   days: 5,        // lookback calendar days for download + scan
@@ -79,7 +79,7 @@ PM2 keeps all processes alive. When `pump-monitor` finishes a pipeline run it ex
 
 **First run** downloads `pump.days` of candles into `data/market_stats/` — network + disk required; can take hours. Market data is not in the repository.
 
-The web page is served directly by the Node app at `http://<server>/` on port `80` by default. On Linux/macOS, binding port `80` may require running PM2 with sufficient privileges or granting Node permission to bind low ports; change `web.port` or `PORT` only if you intentionally want a non-standard port.
+The web page is served by `pump-web` on `127.0.0.1:3000` by default. Put nginx in front of it for public HTTP/HTTPS; see [docs/nginx_letsencrypt.md](docs/nginx_letsencrypt.md).
 
 Persist PM2 across reboots:
 
