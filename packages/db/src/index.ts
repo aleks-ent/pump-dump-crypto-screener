@@ -13,9 +13,15 @@ export {
   type MonitorRunRecord,
 } from "./monitor-runs/repository.js";
 export { TelegramSubscriberRepository } from "./telegram-subscribers/repository.js";
+export {
+  TelegramEpisodeVotingRepository,
+  type TelegramEpisodeMessage,
+  type TelegramEpisodeVoteCounts,
+} from "./telegram-episode-voting/repository.js";
 export { importLegacyPumpIndex } from "./pumps/import-json.js";
 export type {
   PumpClassification,
+  EpisodeType,
   StoredPump,
   LegacyPumpIndexStore,
 } from "./pumps/types.js";

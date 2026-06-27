@@ -3,7 +3,7 @@
 
 export default {
   telegramBotToken: "",
-  // Private chat that receives classification buttons and can classify alerts.
+  // Private chat that is always subscribed and syncs its vote to the legacy classification field.
   classifierTelegramChatId: "",
   fetch: {
     intervals: ["5m"],

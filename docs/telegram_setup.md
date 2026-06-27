@@ -1,7 +1,7 @@
 # Telegram setup
 
 Pump alerts (`pnpm pump:monitor`) and the interactive bot (`pnpm pump:bot`) need a
-Telegram bot token and your classifier chat ID. They go in `config.js` (copy from
+Telegram bot token and your admin/classifier chat ID. They go in `config.js` (copy from
 [`config.example.js`](../config.example.js) if you have not already).
 
 ```javascript
@@ -11,11 +11,16 @@ classifierTelegramChatId: "36772199",
 
 Anyone who discovers the bot can use it without approval. Sending `/start`
 automatically subscribes that private chat or group to new pump and dump alerts.
-Subscribers can use `/stats`, `/runs`, and `/about`. Only `classifierTelegramChatId` can classify
-episodes; that chat's alerts include **Pump | Dump | None** buttons, while other
-subscribers receive alerts without those buttons.
+Subscribers can use `/stats`, `/runs`, and `/about`. Every alert includes **📈 Pump |
+📉 Dump | ⚪ None** voting buttons. Each subscribed chat gets one vote per event; when
+anyone votes, the bot edits every recorded alert message for that event with compact
+totals like `Votes: 📈 3 · 📉 1 · ⚪ 0`.
 
-The classifier chat always receives alerts, even before it sends `/start`. Other chats
+`classifierTelegramChatId` is the always-subscribed admin chat. Its vote also updates
+the legacy episode `classification` field so existing stats/history behavior remains
+compatible.
+
+The admin/classifier chat always receives alerts, even before it sends `/start`. Other chats
 must send `/start` to subscribe.
 
 After deploying the schema change to the VDS, apply it to Turso once:
@@ -41,7 +46,8 @@ automatically before restarting PM2.
    set it as `classifierTelegramChatId`.
 
 Use your private chat for `classifierTelegramChatId`. If you configure a group chat,
-anyone in that group who can press its classification buttons can classify alerts.
+anyone in that group who can press its voting buttons controls that chat's one event
+vote and, for the admin chat, the legacy classification sync.
 
 Keep the token secret. Anyone with it can control your bot.
 
@@ -53,7 +59,8 @@ pm2 start ecosystem.config.cjs
 ```
 
 The bot and monitor must both be running: the bot receives commands and button clicks,
-while the monitor scans markets and broadcasts new alerts.
+while the monitor scans markets, broadcasts new alerts, and records each alert message
+ID so vote totals can be refreshed later.
 
 ## 3. Subscribe and share
 
@@ -76,7 +83,8 @@ Available commands:
 subscribed.
 
 Groups work too: add the bot to a group and send `/start` there. A group is one
-subscription, so `/stop` from any group member unsubscribes that group.
+subscription and one vote per event, so `/stop` from any group member unsubscribes
+that group.
 
 Subscriber chat IDs are stored in the shared Turso database and survive bot restarts
 and code deployments. `/stop` keeps the row, sets `subscribed = 0`, and records
@@ -115,5 +123,5 @@ API traffic. Do not publish the bot token itself.
 | Bot does not reply in a group | Add the bot to the group; some groups need `/setprivacy` disabled in BotFather (`/setprivacy` → your bot → **Disable**) so it sees all messages |
 | User does not receive alerts | Send `/start` in that exact private chat or group |
 | User no longer wants alerts | Send `/stop`; `/stats`, `/runs`, and `/about` remain available |
-| Classifier chat does not see buttons | Send `/start` in that chat and verify `classifierTelegramChatId` matches its chat ID |
+| Alert does not show voting buttons | Verify both `pnpm pump:monitor` and `pnpm pump:bot` are deployed from the voting build |
 | Alerts work, buttons do not | Run `pnpm pump:bot` alongside or after `pump:monitor` |

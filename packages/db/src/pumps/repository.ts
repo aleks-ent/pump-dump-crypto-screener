@@ -203,6 +203,15 @@ export class PumpRepository {
     return result.rows.map((row) => rowToStoredPump(row as Record<string, unknown>));
   }
 
+  async getStoredPump(id: string): Promise<StoredPump | null> {
+    const result = await this.client.execute({
+      sql: `SELECT ${PUMP_COLUMNS} FROM pumps WHERE id = ?`,
+      args: [id],
+    });
+    const row = result.rows[0];
+    return row ? rowToStoredPump(row as Record<string, unknown>) : null;
+  }
+
   async setClassification(id: string, classification: PumpClassification): Promise<void> {
     const result = await this.client.execute({
       sql: "UPDATE pumps SET classification = ? WHERE id = ?",

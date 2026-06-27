@@ -7,6 +7,7 @@ import {
   loadDatabaseConfig,
   MonitorRunRepository,
   PumpRepository,
+  TelegramEpisodeVotingRepository,
   TelegramSubscriberRepository,
 } from "@screener/db";
 import {
@@ -30,7 +31,7 @@ import {
   cleanupUnavailableTelegramRecipient,
   ensureClassifierTelegramRecipient,
 } from "./telegram-delivery.js";
-import { loadTelegramConfig, sendEpisodeAlerts, TELEGRAM_ALERT_DETAIL_LIMIT } from "./telegram.js";
+import { loadTelegramConfig, sendEpisodeAlerts } from "./telegram.js";
 import {
   resolveTelegramAlertChatIds,
 } from "./telegram-subscribers.js";
@@ -76,6 +77,7 @@ async function main(): Promise<void> {
   const pumpRepo = new PumpRepository(client);
   const runRepo = new MonitorRunRepository(client);
   const subscriberRepo = new TelegramSubscriberRepository(client);
+  const votingRepo = new TelegramEpisodeVotingRepository(client);
   await pumpRepo.applySchema();
 
   const runId = await runRepo.startRun(new Date().toISOString());
@@ -93,6 +95,7 @@ async function main(): Promise<void> {
       opts,
       pumpRepo,
       subscriberRepo,
+      votingRepo,
       onNewPumpsCount: (count) => {
         newPumpsCount = count;
       },
@@ -117,9 +120,10 @@ async function runMonitorPipeline(args: {
   };
   pumpRepo: PumpRepository;
   subscriberRepo: TelegramSubscriberRepository;
+  votingRepo: TelegramEpisodeVotingRepository;
   onNewPumpsCount: (count: number) => void;
 }): Promise<void> {
-  const { days, repoRoot, dataDir, eventsPath, minScore, minDumpScore, useScanCache, opts, pumpRepo, subscriberRepo, onNewPumpsCount } =
+  const { days, repoRoot, dataDir, eventsPath, minScore, minDumpScore, useScanCache, opts, pumpRepo, subscriberRepo, votingRepo, onNewPumpsCount } =
     args;
 
   console.error(`Pump monitor: ${days}-day window (config.js pump.days)`);
@@ -241,12 +245,22 @@ async function runMonitorPipeline(args: {
   let messageCount = 0;
   for (const chatId of recipientIds) {
     try {
-      messageCount += await sendEpisodeAlerts(
+      const sentAlerts = await sendEpisodeAlerts(
         { ...telegram, chatId },
         pumpsToAlert,
         newDumps,
-        { classificationButtons: chatId === telegram.classifierChatId },
+        {
+          votingButtons: true,
+          onSent: async (alert) => {
+            await votingRepo.recordMessage(
+              alert.episodeId,
+              alert.chatId,
+              alert.messageId,
+            );
+          },
+        },
       );
+      messageCount += sentAlerts.length;
       deliveredChats += 1;
     } catch (error) {
       failedChats += 1;
@@ -282,15 +296,9 @@ async function runMonitorPipeline(args: {
     }
   }
 
-  if (pumpsToAlert.length + newDumps.length > TELEGRAM_ALERT_DETAIL_LIMIT) {
-    console.error(
-      `Telegram summary sent to ${deliveredChats}/${recipientIds.length} recipient(s) (${pumpsToAlert.length} new pump(s), ${newDumps.length} new dump(s) — individual alerts skipped, limit ${TELEGRAM_ALERT_DETAIL_LIMIT})`,
-    );
-  } else {
-    console.error(
-      `Telegram alerts sent to ${deliveredChats}/${recipientIds.length} recipient(s) for ${pumpsToAlert.length} new pump(s) and ${newDumps.length} new dump(s) (${messageCount} message${messageCount === 1 ? "" : "s"}${failedChats > 0 ? `, ${failedChats} failed chat(s)` : ""})`,
-    );
-  }
+  console.error(
+    `Telegram alerts sent to ${deliveredChats}/${recipientIds.length} recipient(s) for ${pumpsToAlert.length} new pump(s) and ${newDumps.length} new dump(s) (${messageCount} message${messageCount === 1 ? "" : "s"}${failedChats > 0 ? `, ${failedChats} failed chat(s)` : ""})`,
+  );
 }
 
 main().catch((err) => {

@@ -12,11 +12,12 @@ Create or update an `A` record:
 screener.itnomad.space -> <server IPv4 address>
 ```
 
-If the server has IPv6, add an `AAAA` record too. Wait until DNS resolves from the
-server:
+If the server has IPv6, add an `AAAA` record too. If it does not, remove any stale
+`AAAA` record for this hostname. Wait until DNS resolves from the server:
 
 ```bash
-dig +short screener.itnomad.space
+dig +short A screener.itnomad.space
+dig +short AAAA screener.itnomad.space
 ```
 
 ## 2. Configure the app for localhost
@@ -58,8 +59,13 @@ Open HTTP/HTTPS in the firewall if UFW is enabled:
 
 ```bash
 sudo ufw allow 'Nginx Full'
+sudo ufw allow OpenSSH
 sudo ufw status
 ```
+
+Also open inbound TCP `80` and `443` in your hosting provider firewall/security
+group. UFW only controls the server itself; many VPS providers also have a separate
+cloud firewall panel.
 
 ## 4. Add the nginx reverse proxy
 
@@ -89,10 +95,20 @@ Enable it:
 sudo ln -sf /etc/nginx/sites-available/pump-screener /etc/nginx/sites-enabled/pump-screener
 sudo nginx -t
 sudo systemctl reload nginx
+```
+
+Before running Certbot, confirm nginx is reachable locally and publicly:
+
+```bash
+sudo ss -ltnp | grep ':80'
+curl -I http://127.0.0.1
 curl -I http://screener.itnomad.space
 ```
 
 ## 5. Issue the Let's Encrypt certificate
+
+Do not run Certbot until `curl -I http://screener.itnomad.space` returns an HTTP
+response. If it times out, Let's Encrypt will time out too.
 
 ```bash
 sudo certbot --nginx -d screener.itnomad.space --redirect
@@ -121,6 +137,22 @@ sudo certbot certificates
 If the public site times out, check DNS, cloud firewall/security-group rules, and
 that ports `80` and `443` are reachable from the internet. If nginx returns `502 Bad
 Gateway`, check `pm2 logs pump-web` and the local health check.
+
+For a Certbot error like `Timeout during connect`, use this order:
+
+```bash
+dig +short screener.itnomad.space
+curl -4 ifconfig.me
+sudo systemctl status nginx --no-pager
+sudo ss -ltnp | grep ':80'
+curl -I http://127.0.0.1
+curl -I http://screener.itnomad.space
+sudo ufw status verbose
+```
+
+The DNS `A` record must match the server's public IP. If localhost works but the
+domain times out, open inbound TCP `80` in the provider firewall and any server
+firewall, then retry Certbot.
 
 References:
 

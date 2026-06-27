@@ -6,12 +6,19 @@ import {
   loadDatabaseConfig,
   MonitorRunRepository,
   PumpRepository,
+  TelegramEpisodeVotingRepository,
   TelegramSubscriberRepository,
   type PumpClassification,
 } from "@screener/db";
 import { findRepoRoot, resolveRepoPath } from "@screener/core";
-import { parseClassificationCallback } from "./telegram-callback.js";
-import { ensureClassifierTelegramRecipient } from "./telegram-delivery.js";
+import {
+  buildClassificationKeyboard,
+  parseClassificationCallback,
+} from "./telegram-callback.js";
+import {
+  cleanupUnavailableTelegramRecipient,
+  ensureClassifierTelegramRecipient,
+} from "./telegram-delivery.js";
 import {
   loadLegacyTelegramSubscriberIds,
   markLegacyTelegramSubscribersMigrated,
@@ -19,11 +26,11 @@ import {
 import {
   answerCallbackQuery,
   editMessageText,
-  formatClassifiedPumpMessage,
   formatAboutMessage,
   formatMonitorRunsMessage,
   formatPumpStatsMessages,
   formatStartMessage,
+  formatVotedEpisodeAlertMessage,
   buildCommandReplyKeyboard,
   fetchTelegramSubscriberData,
   normalizeTelegramChatId,
@@ -57,6 +64,12 @@ interface TelegramUpdate {
       chat: { id: number };
     };
   };
+}
+
+export interface TelegramBotRepositories {
+  pumpRepo: PumpRepository;
+  subscriberRepo: TelegramSubscriberRepository;
+  votingRepo: TelegramEpisodeVotingRepository;
 }
 
 function parseCommand(text: string): string | null {
@@ -114,6 +127,23 @@ async function withTelegramSubscriberRepository<T>(
   try {
     await new PumpRepository(client).applySchema();
     return await action(new TelegramSubscriberRepository(client));
+  } finally {
+    client.close();
+  }
+}
+
+async function withTelegramBotRepositories<T>(
+  action: (repos: TelegramBotRepositories) => Promise<T>,
+): Promise<T> {
+  const dbConfig = await loadDatabaseConfig();
+  const client = createDbClient(dbConfig);
+  try {
+    await new PumpRepository(client).applySchema();
+    return await action({
+      pumpRepo: new PumpRepository(client),
+      subscriberRepo: new TelegramSubscriberRepository(client),
+      votingRepo: new TelegramEpisodeVotingRepository(client),
+    });
   } finally {
     client.close();
   }
@@ -265,45 +295,133 @@ export async function handleClassificationCallback(
   config: PumpBotConfig,
   callbackQuery: NonNullable<TelegramUpdate["callback_query"]>,
   log: (msg: string) => void,
+  repositories?: TelegramBotRepositories,
 ): Promise<void> {
-  const chatId = callbackQuery.message?.chat.id;
-  if (!isClassifierTelegramChat(config.telegram.classifierChatId, chatId)) {
-    log(`Ignored classification callback from chat ${chatId ?? "unknown"}`);
-    await answerCallbackQuery(
-      config.telegram,
-      callbackQuery.id,
-      "Classification is not available in this chat",
-    );
-    return;
-  }
-
   const parsed = parseClassificationCallback(callbackQuery.data ?? "");
   if (!parsed) {
     await answerCallbackQuery(config.telegram, callbackQuery.id, "Unknown action");
     return;
   }
 
-  const repo = await createPumpRepository();
-  await repo.setClassification(parsed.pumpId, parsed.classification);
-
-  const pumps = await repo.listStoredPumps();
-  const pump = pumps.find((p) => p.index === parsed.pumpId);
-  if (pump && callbackQuery.message) {
-    const text = formatClassifiedPumpMessage(pump, parsed.classification);
-    await editMessageText(
+  const rawChatId = callbackQuery.message?.chat.id;
+  if (rawChatId == null) {
+    await answerCallbackQuery(
       config.telegram,
-      String(chatId),
-      callbackQuery.message.message_id,
-      text,
+      callbackQuery.id,
+      "Voting is not available for this message",
     );
+    return;
   }
 
-  await answerCallbackQuery(
-    config.telegram,
-    callbackQuery.id,
-    labelAck(parsed.classification),
+  const chatId = String(rawChatId);
+  const handleVote = async ({
+    pumpRepo,
+    subscriberRepo,
+    votingRepo,
+  }: TelegramBotRepositories): Promise<void> => {
+    const isClassifier = isClassifierTelegramChat(
+      config.telegram.classifierChatId,
+      rawChatId,
+    );
+    if (isClassifier) {
+      await ensureClassifierTelegramRecipient(
+        subscriberRepo,
+        config.telegram.classifierChatId,
+      );
+    } else if (!(await subscriberRepo.isSubscribed(chatId))) {
+      log(`Ignored vote callback from unsubscribed chat ${chatId}`);
+      await answerCallbackQuery(
+        config.telegram,
+        callbackQuery.id,
+        "Send /start before voting",
+      );
+      return;
+    }
+
+    const episode = await pumpRepo.getStoredPump(parsed.pumpId);
+    if (!episode) {
+      await answerCallbackQuery(
+        config.telegram,
+        callbackQuery.id,
+        "Event was not found",
+      );
+      return;
+    }
+
+    await votingRepo.upsertVote(parsed.pumpId, chatId, parsed.classification);
+    if (isClassifier) {
+      await pumpRepo.setClassification(parsed.pumpId, parsed.classification);
+    }
+
+    const voteCounts = await votingRepo.countVotes(parsed.pumpId);
+    const text = formatVotedEpisodeAlertMessage(episode, voteCounts);
+    const replyMarkup = buildClassificationKeyboard(parsed.pumpId);
+    const recordedMessages = await votingRepo.listMessages(parsed.pumpId);
+    const targets = [...recordedMessages];
+    const hasCurrentMessage = targets.some(
+      (message) =>
+        message.chatId === chatId &&
+        message.messageId === callbackQuery.message?.message_id,
+    );
+    if (!hasCurrentMessage && callbackQuery.message) {
+      await votingRepo.recordMessage(
+        parsed.pumpId,
+        chatId,
+        callbackQuery.message.message_id,
+      );
+      targets.push({
+        episodeId: parsed.pumpId,
+        chatId,
+        messageId: callbackQuery.message.message_id,
+        sentAt: new Date().toISOString(),
+      });
+    }
+
+    for (const message of targets) {
+      try {
+        await editMessageText(
+          config.telegram,
+          message.chatId,
+          message.messageId,
+          text,
+          { replyMarkup },
+        );
+      } catch (error) {
+        if (isTelegramMessageNotModified(error)) continue;
+        const cleanup = await cleanupUnavailableTelegramRecipient(
+          subscriberRepo,
+          message.chatId,
+          error,
+        );
+        if (cleanup.permanent && cleanup.unsubscribed) {
+          log(`Marked unavailable Telegram chat ${message.chatId} unsubscribed`);
+        }
+        log(
+          `Failed to update vote stats in chat ${message.chatId}: ${formatUnknownError(error)}`,
+        );
+      }
+    }
+
+    await answerCallbackQuery(
+      config.telegram,
+      callbackQuery.id,
+      labelAck(parsed.classification),
+    );
+    log(`Vote ${parsed.classification} saved for ${parsed.pumpId} by ${chatId}`);
+  };
+
+  if (repositories) {
+    await handleVote(repositories);
+  } else {
+    await withTelegramBotRepositories(handleVote);
+  }
+}
+
+function isTelegramMessageNotModified(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.toLowerCase().includes("message is not modified")
   );
-  log(`Classification ${parsed.classification} saved for ${parsed.pumpId}`);
 }
 
 function labelAck(classification: PumpClassification): string {
@@ -330,7 +448,7 @@ export async function runTelegramBot(
   let offset = loadUpdateOffset(baseDir);
 
   log(
-    `Public Telegram bot listening (/start, /stats, /runs, /about, /stop; classification restricted to chat ${config.telegram.classifierChatId})`,
+    `Public Telegram bot listening (/start, /stats, /runs, /about, /stop; event voting enabled for subscribers, admin chat ${config.telegram.classifierChatId})`,
   );
   if (opts?.migrateLegacySubscribers !== false) {
     await initializeTelegramSubscribers(

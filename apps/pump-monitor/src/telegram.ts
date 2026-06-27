@@ -1,6 +1,11 @@
 import { pathToFileURL } from "node:url";
 import { resolveRepoPath } from "@screener/core";
-import type { MonitorRunRecord, PumpClassification, StoredPump } from "@screener/db";
+import type {
+  MonitorRunRecord,
+  PumpClassification,
+  StoredPump,
+  TelegramEpisodeVoteCounts,
+} from "@screener/db";
 import { normalizeTelegramChatId } from "./telegram-subscribers.js";
 import {
   buildClassificationKeyboard,
@@ -47,6 +52,12 @@ interface TelegramSuccessPayload {
   result?: unknown;
   error_code?: unknown;
   description?: unknown;
+}
+
+export interface SentEpisodeAlert {
+  episodeId: string;
+  chatId: string;
+  messageId: number;
 }
 
 export class TelegramApiError extends Error {
@@ -205,9 +216,6 @@ function fmtDuration(minutes: number): string {
 
 const TELEGRAM_MESSAGE_LIMIT = 4096;
 
-/** Max new episodes to alert individually; above this, send one summary message. */
-export const TELEGRAM_ALERT_DETAIL_LIMIT = 5;
-
 function sortPumpsRecentFirst(pumps: StoredPump[]): StoredPump[] {
   return pumps.slice().sort((a, b) => b.startMs - a.startMs || b.peakScore - a.peakScore);
 }
@@ -240,6 +248,30 @@ export function formatPumpAlertMessage(pump: StoredPump): string {
 
 export function formatDumpAlertMessage(dump: StoredPump): string {
   return ["<b>New dump detected</b>", formatEpisodeBlock(dump)].join("\n");
+}
+
+const ZERO_VOTE_COUNTS: TelegramEpisodeVoteCounts = {
+  pump: 0,
+  dump: 0,
+  none: 0,
+};
+
+export function formatEpisodeVoteStats(
+  counts: TelegramEpisodeVoteCounts,
+): string {
+  return `Votes: 📈 ${counts.pump} · 📉 ${counts.dump} · ⚪ ${counts.none}`;
+}
+
+export function formatVotedEpisodeAlertMessage(
+  episode: StoredPump,
+  voteCounts: TelegramEpisodeVoteCounts = ZERO_VOTE_COUNTS,
+): string {
+  const title = episode.episodeType === "dump" ? "New dump detected" : "New pump detected";
+  return [
+    `<b>${title}</b>`,
+    formatEpisodeBlock({ ...episode, classification: null }),
+    formatEpisodeVoteStats(voteCounts),
+  ].join("\n");
 }
 
 function formatPumpStatsHeader(
@@ -447,25 +479,58 @@ export async function sendTelegramMessage(
   config: TelegramConfig,
   text: string,
   opts?: { replyMarkup?: TelegramReplyMarkup },
-): Promise<void> {
-  await telegramPost(config, "sendMessage", {
+): Promise<number> {
+  const response = await telegramPost(config, "sendMessage", {
     chat_id: config.chatId,
     text,
     parse_mode: "HTML",
-    disable_web_page_preview: false,
+    link_preview_options: { is_disabled: true },
     reply_markup: opts?.replyMarkup,
   });
+  const payload = (await response.json()) as TelegramSuccessPayload;
+  if (payload.ok !== true) {
+    const errorCode =
+      typeof payload.error_code === "number" ? payload.error_code : response.status;
+    const description =
+      typeof payload.description === "string"
+        ? payload.description
+        : "Telegram sendMessage returned ok=false";
+    throw new TelegramApiError(
+      "sendMessage",
+      response.status,
+      errorCode,
+      description,
+    );
+  }
+
+  if (
+    payload.result == null ||
+    typeof payload.result !== "object" ||
+    typeof (payload.result as { message_id?: unknown }).message_id !== "number"
+  ) {
+    throw new TelegramApiError(
+      "sendMessage",
+      response.status,
+      response.status,
+      "Telegram sendMessage did not return a message_id",
+    );
+  }
+
+  return (payload.result as { message_id: number }).message_id;
 }
 
 export async function sendPumpAlertMessage(
   config: TelegramConfig,
   pump: StoredPump,
-  opts?: { classificationButtons?: boolean },
-): Promise<void> {
-  await sendTelegramMessage(
+  opts?: {
+    voteCounts?: TelegramEpisodeVoteCounts;
+    votingButtons?: boolean;
+  },
+): Promise<number> {
+  return sendTelegramMessage(
     config,
-    formatPumpAlertMessage(pump),
-    opts?.classificationButtons
+    formatVotedEpisodeAlertMessage(pump, opts?.voteCounts),
+    opts?.votingButtons !== false
       ? { replyMarkup: buildClassificationKeyboard(pump.index) }
       : undefined,
   );
@@ -474,12 +539,15 @@ export async function sendPumpAlertMessage(
 export async function sendDumpAlertMessage(
   config: TelegramConfig,
   dump: StoredPump,
-  opts?: { classificationButtons?: boolean },
-): Promise<void> {
-  await sendTelegramMessage(
+  opts?: {
+    voteCounts?: TelegramEpisodeVoteCounts;
+    votingButtons?: boolean;
+  },
+): Promise<number> {
+  return sendTelegramMessage(
     config,
-    formatDumpAlertMessage(dump),
-    opts?.classificationButtons
+    formatVotedEpisodeAlertMessage(dump, opts?.voteCounts),
+    opts?.votingButtons !== false
       ? { replyMarkup: buildClassificationKeyboard(dump.index) }
       : undefined,
   );
@@ -488,7 +556,7 @@ export async function sendDumpAlertMessage(
 export async function sendPumpAlert(
   config: TelegramConfig,
   pumps: StoredPump[],
-  opts?: { classificationButtons?: boolean },
+  opts?: { votingButtons?: boolean },
 ): Promise<number> {
   for (const pump of pumps) {
     await sendPumpAlertMessage(config, pump, opts);
@@ -496,46 +564,36 @@ export async function sendPumpAlert(
   return pumps.length;
 }
 
-export function formatEpisodeOverflowAlert(
-  pumpCount: number,
-  dumpCount: number,
-  limit: number = TELEGRAM_ALERT_DETAIL_LIMIT,
-): string {
-  const total = pumpCount + dumpCount;
-  return [
-    "<b>Many new episodes detected</b>",
-    `Pumps: ${pumpCount} · Dumps: ${dumpCount} (${total} total)`,
-    `Did not send individual alerts because the count exceeds ${limit}.`,
-    "Use /stats to see the 5 most recent stored pumps.",
-  ].join("\n");
-}
-
 export async function sendEpisodeAlerts(
   config: TelegramConfig,
   pumps: StoredPump[],
   dumps: StoredPump[],
-  opts?: { detailLimit?: number; classificationButtons?: boolean },
-): Promise<number> {
-  const limit = opts?.detailLimit ?? TELEGRAM_ALERT_DETAIL_LIMIT;
-  const total = pumps.length + dumps.length;
-  if (total > limit) {
-    await sendTelegramMessage(
-      config,
-      formatEpisodeOverflowAlert(pumps.length, dumps.length, limit),
-    );
-    return 1;
-  }
-
-  let count = 0;
+  opts?: {
+    voteCountsByEpisode?: ReadonlyMap<string, TelegramEpisodeVoteCounts>;
+    votingButtons?: boolean;
+    onSent?: (alert: SentEpisodeAlert) => Promise<void>;
+  },
+): Promise<SentEpisodeAlert[]> {
+  const sent: SentEpisodeAlert[] = [];
   for (const pump of pumps) {
-    await sendPumpAlertMessage(config, pump, opts);
-    count += 1;
+    const messageId = await sendPumpAlertMessage(config, pump, {
+      voteCounts: opts?.voteCountsByEpisode?.get(pump.index),
+      votingButtons: opts?.votingButtons,
+    });
+    const alert = { episodeId: pump.index, chatId: config.chatId, messageId };
+    sent.push(alert);
+    await opts?.onSent?.(alert);
   }
   for (const dump of dumps) {
-    await sendDumpAlertMessage(config, dump, opts);
-    count += 1;
+    const messageId = await sendDumpAlertMessage(config, dump, {
+      voteCounts: opts?.voteCountsByEpisode?.get(dump.index),
+      votingButtons: opts?.votingButtons,
+    });
+    const alert = { episodeId: dump.index, chatId: config.chatId, messageId };
+    sent.push(alert);
+    await opts?.onSent?.(alert);
   }
-  return count;
+  return sent;
 }
 
 export async function answerCallbackQuery(
@@ -561,7 +619,7 @@ export async function editMessageText(
     message_id: messageId,
     text,
     parse_mode: "HTML",
-    disable_web_page_preview: false,
+    link_preview_options: { is_disabled: true },
     reply_markup: opts?.replyMarkup,
   });
 }

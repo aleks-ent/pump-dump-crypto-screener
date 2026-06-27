@@ -140,6 +140,17 @@ describe("PumpRepository", () => {
     ]);
   });
 
+  it("gets one stored episode by id", async () => {
+    const startMs = Date.parse("2026-06-05T12:00:00.000Z");
+    const { newPumps } = await repo.upsertPumpEpisodes([
+      samplePump("BTC/USDT", startMs),
+    ]);
+
+    const stored = await repo.getStoredPump(newPumps[0]!.index);
+    expect(stored?.coin).toBe("BTC/USDT");
+    expect(await repo.getStoredPump("missing")).toBeNull();
+  });
+
   it("updates classification", async () => {
     const startMs = Date.parse("2026-06-05T12:00:00.000Z");
     const { newPumps } = await repo.upsertPumpEpisodes([samplePump("BTC/USDT", startMs)]);

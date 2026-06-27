@@ -25,7 +25,11 @@ describe("telegram classification callbacks", () => {
     const keyboard = buildClassificationKeyboard(pumpId);
     expect(keyboard.inline_keyboard).toHaveLength(1);
     expect(keyboard.inline_keyboard[0]).toHaveLength(3);
-    expect(keyboard.inline_keyboard[0]!.map((b) => b.text)).toEqual(["Pump", "Dump", "None"]);
+    expect(keyboard.inline_keyboard[0]!.map((b) => b.text)).toEqual([
+      "📈 Pump",
+      "📉 Dump",
+      "⚪ None",
+    ]);
   });
 
   it("rejects invalid callback data", () => {

@@ -47,9 +47,9 @@ export function buildClassificationKeyboard(pumpId: string) {
   return {
     inline_keyboard: [
       [
-        { text: "Pump", callback_data: encodeClassificationCallback("pump", pumpId) },
-        { text: "Dump", callback_data: encodeClassificationCallback("dump", pumpId) },
-        { text: "None", callback_data: encodeClassificationCallback("none", pumpId) },
+        { text: "📈 Pump", callback_data: encodeClassificationCallback("pump", pumpId) },
+        { text: "📉 Dump", callback_data: encodeClassificationCallback("dump", pumpId) },
+        { text: "⚪ None", callback_data: encodeClassificationCallback("none", pumpId) },
       ],
     ],
   };

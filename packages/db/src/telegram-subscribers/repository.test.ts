@@ -25,6 +25,8 @@ describe("TelegramSubscriberRepository", () => {
     ).toBe(true);
 
     expect(await repo.listChatIds()).toEqual(["12345", "-10098765"]);
+    expect(await repo.isSubscribed("12345")).toBe(true);
+    expect(await repo.isSubscribed("missing")).toBe(false);
   });
 
   it("stores Telegram subscriber data when provided", async () => {
@@ -58,6 +60,7 @@ describe("TelegramSubscriberRepository", () => {
       await repo.unsubscribe("12345", "2026-06-11T11:05:00.000Z"),
     ).toBe(false);
     expect(await repo.listChatIds()).toEqual([]);
+    expect(await repo.isSubscribed("12345")).toBe(false);
 
     const result = await client.execute({
       sql: `

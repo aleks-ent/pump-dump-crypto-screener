@@ -9,10 +9,13 @@ import {
   formatPumpStatsMessages,
   formatStartMessage,
   formatEpisodeStatsMessages,
-  formatEpisodeOverflowAlert,
+  formatEpisodeVoteStats,
+  formatVotedEpisodeAlertMessage,
   formatDumpStatsMessages,
   normalizeTelegramChatId,
   sendEpisodeAlerts,
+  sendTelegramMessage,
+  editMessageText,
 } from "./telegram.js";
 import { buildClassificationKeyboard } from "./telegram-callback.js";
 
@@ -41,6 +44,19 @@ function sampleDump(coin: string, startMs: number, peakScore: number): PumpEpiso
     type: "dump",
     dominantPhase: "distribution_or_fade",
   };
+}
+
+function mockTelegramSuccess(startMessageId = 100) {
+  let nextMessageId = startMessageId;
+  return vi.fn().mockImplementation(() =>
+    Promise.resolve({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        result: { message_id: nextMessageId++ },
+      }),
+    }),
+  );
 }
 
 describe("PumpRepository list + telegram formatting", () => {
@@ -74,6 +90,23 @@ describe("PumpRepository list + telegram formatting", () => {
     expect(message).toContain("WLD/USDT");
     const keyboard = buildClassificationKeyboard(pump.index);
     expect(keyboard.inline_keyboard[0]).toHaveLength(3);
+  });
+
+  it("formats voted alert messages with compact emoji stats", async () => {
+    const { newPumps } = await repo.upsertPumpEpisodes([
+      samplePump("WLD/USDT", Date.parse("2026-06-07T00:50:00.000Z"), 100),
+    ]);
+    const message = formatVotedEpisodeAlertMessage(newPumps[0]!, {
+      pump: 2,
+      dump: 1,
+      none: 0,
+    });
+
+    expect(formatEpisodeVoteStats({ pump: 2, dump: 1, none: 0 })).toBe(
+      "Votes: 📈 2 · 📉 1 · ⚪ 0",
+    );
+    expect(message).toContain("New pump detected");
+    expect(message).toContain("Votes: 📈 2 · 📉 1 · ⚪ 0");
   });
 });
 
@@ -217,19 +250,52 @@ describe("formatEpisodeStatsMessages", () => {
   });
 });
 
-describe("formatEpisodeOverflowAlert", () => {
-  it("summarizes counts when too many episodes for individual alerts", () => {
-    const message = formatEpisodeOverflowAlert(12, 3, 5);
-    expect(message).toContain("Pumps: 12");
-    expect(message).toContain("Dumps: 3");
-    expect(message).toContain("15 total");
-    expect(message).toContain("exceeds 5");
-    expect(message).toContain("/stats");
-  });
-});
+describe("Telegram message delivery", () => {
+  it("returns the sent message id and disables link previews", async () => {
+    const fetchMock = mockTelegramSuccess(42);
+    vi.stubGlobal("fetch", fetchMock);
 
-describe("classification button delivery", () => {
-  it("adds buttons only when classification is enabled for the recipient", async () => {
+    try {
+      await expect(
+        sendTelegramMessage(
+          { botToken: "token", chatId: "public-user" },
+          "<a href=\"https://example.com/chart\">TradingView chart</a>",
+        ),
+      ).resolves.toBe(42);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    const body = JSON.parse(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body),
+    ) as Record<string, unknown>;
+    expect(body.link_preview_options).toEqual({ is_disabled: true });
+    expect(body).not.toHaveProperty("disable_web_page_preview");
+  });
+
+  it("disables link previews when editing messages", async () => {
+    const fetchMock = mockTelegramSuccess();
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await editMessageText(
+        { botToken: "token" },
+        "public-user",
+        42,
+        "<a href=\"https://example.com/chart\">TradingView chart</a>",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    const body = JSON.parse(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body),
+    ) as Record<string, unknown>;
+    expect(body.link_preview_options).toEqual({ is_disabled: true });
+    expect(body).not.toHaveProperty("disable_web_page_preview");
+  });
+
+  it("adds voting buttons for every alert recipient", async () => {
     const client = createMemoryDbClient();
     const repo = new PumpRepository(client);
     await repo.applySchema();
@@ -237,21 +303,26 @@ describe("classification button delivery", () => {
       samplePump("WLD/USDT", Date.parse("2026-06-07T00:50:00.000Z"), 100),
     ]);
     const pump = newPumps[0]!;
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    const fetchMock = mockTelegramSuccess();
     vi.stubGlobal("fetch", fetchMock);
 
     try {
-      await sendEpisodeAlerts(
+      const publicAlerts = await sendEpisodeAlerts(
         { botToken: "token", chatId: "public-user" },
         [pump],
         [],
       );
-      await sendEpisodeAlerts(
+      const adminAlerts = await sendEpisodeAlerts(
         { botToken: "token", chatId: "admin-user" },
         [pump],
         [],
-        { classificationButtons: true },
       );
+      expect(publicAlerts).toEqual([
+        { episodeId: pump.index, chatId: "public-user", messageId: 100 },
+      ]);
+      expect(adminAlerts).toEqual([
+        { episodeId: pump.index, chatId: "admin-user", messageId: 101 },
+      ]);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -262,7 +333,43 @@ describe("classification button delivery", () => {
     const adminBody = JSON.parse(
       String((fetchMock.mock.calls[1]?.[1] as RequestInit).body),
     ) as Record<string, unknown>;
-    expect(publicBody.reply_markup).toBeUndefined();
+    expect(publicBody.reply_markup).toEqual(buildClassificationKeyboard(pump.index));
     expect(adminBody.reply_markup).toEqual(buildClassificationKeyboard(pump.index));
+    expect(String(publicBody.text)).toContain("Votes: 📈 0 · 📉 0 · ⚪ 0");
+  });
+
+  it("sends every event individually even above the old detail limit", async () => {
+    const client = createMemoryDbClient();
+    const repo = new PumpRepository(client);
+    await repo.applySchema();
+    const { newPumps } = await repo.upsertPumpEpisodes(
+      Array.from({ length: 6 }, (_value, index) =>
+        samplePump(
+          `P${index}/USDT`,
+          Date.parse("2026-06-07T00:00:00.000Z") + index * 300_000,
+          100,
+        ),
+      ),
+    );
+    const fetchMock = mockTelegramSuccess();
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const sent = await sendEpisodeAlerts(
+        { botToken: "token", chatId: "public-user" },
+        newPumps,
+        [],
+      );
+      expect(sent).toHaveLength(6);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    const bodies = fetchMock.mock.calls.map((call) =>
+      JSON.parse(String((call[1] as RequestInit).body)) as Record<string, unknown>,
+    );
+    expect(bodies.every((body) => String(body.text).includes("Votes:"))).toBe(true);
+    expect(bodies.some((body) => String(body.text).includes("Many new episodes"))).toBe(false);
   });
 });

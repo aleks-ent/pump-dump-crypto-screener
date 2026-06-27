@@ -66,4 +66,18 @@ export class TelegramSubscriberRepository {
     `);
     return result.rows.map((row) => String(row.chat_id));
   }
+
+  async isSubscribed(chatId: string): Promise<boolean> {
+    const result = await this.client.execute({
+      sql: `
+        SELECT 1
+        FROM telegram_subscribers
+        WHERE chat_id = ?
+          AND subscribed = 1
+        LIMIT 1
+      `.trim(),
+      args: [chatId],
+    });
+    return result.rows.length > 0;
+  }
 }
