@@ -33,6 +33,10 @@ export type TelegramReplyMarkup = InlineKeyboardMarkup | ReplyKeyboardMarkup;
 
 export { normalizeTelegramChatId };
 
+const CONTACT_EMAIL = "aleksent@yahoo.com";
+const PROJECT_REPO_URL =
+  "https://github.com/aleks-ent/pump-dump-crypto-screener";
+
 interface TelegramErrorPayload {
   error_code?: unknown;
   description?: unknown;
@@ -80,10 +84,22 @@ export function isPermanentTelegramRecipientError(error: unknown): boolean {
 
 export function buildCommandReplyKeyboard(): ReplyKeyboardMarkup {
   return {
-    keyboard: [[{ text: "/stats" }, { text: "/runs" }]],
+    keyboard: [[{ text: "/stats" }, { text: "/runs" }], [{ text: "/about" }]],
     resize_keyboard: true,
     is_persistent: true,
   };
+}
+
+export function formatAboutMessage(): string {
+  return [
+    "<b>About Pump &amp; Dump Crypto Screener</b>",
+    "",
+    "This bot scans Binance and Bybit market data for unusual crypto pump and dump activity and sends TradingView chart links for detected events.",
+    "",
+    `Project: <a href="${PROJECT_REPO_URL}">aleks-ent/pump-dump-crypto-screener</a>`,
+    `Contact: ${CONTACT_EMAIL}`,
+    "<i>Signals are informational only, not financial advice.</i>",
+  ].join("\n");
 }
 
 export function formatStartMessage(): string {
@@ -95,11 +111,12 @@ export function formatStartMessage(): string {
     "<b>How to use</b>",
     "/stats — view the latest detected pumps",
     "/runs — check recent scanner runs and status",
+    "/about — view project details and contact info",
     "/stop — unsubscribe from automatic alerts",
     "",
     "You are subscribed to new pump and dump alerts after pressing Start.",
     "Use the buttons below at any time.",
-    "Contact: aleksent@yahoo.com",
+    `Contact: ${CONTACT_EMAIL}`,
     "<i>Signals are informational only, not financial advice.</i>",
   ].join("\n");
 }

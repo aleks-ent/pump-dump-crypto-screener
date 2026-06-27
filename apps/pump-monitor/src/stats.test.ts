@@ -3,6 +3,7 @@ import type { PumpEpisode } from "@screener/pump-detector";
 import { createMemoryDbClient, PumpRepository } from "@screener/db";
 import {
   buildCommandReplyKeyboard,
+  formatAboutMessage,
   formatMonitorRunsMessage,
   formatPumpAlertMessage,
   formatPumpStatsMessages,
@@ -77,11 +78,24 @@ describe("PumpRepository list + telegram formatting", () => {
 });
 
 describe("buildCommandReplyKeyboard", () => {
-  it("exposes /stats and /runs as persistent reply buttons", () => {
+  it("exposes public commands as persistent reply buttons", () => {
     const keyboard = buildCommandReplyKeyboard();
-    expect(keyboard.keyboard).toEqual([[{ text: "/stats" }, { text: "/runs" }]]);
+    expect(keyboard.keyboard).toEqual([
+      [{ text: "/stats" }, { text: "/runs" }],
+      [{ text: "/about" }],
+    ]);
     expect(keyboard.resize_keyboard).toBe(true);
     expect(keyboard.is_persistent).toBe(true);
+  });
+});
+
+describe("formatAboutMessage", () => {
+  it("includes project contact and repository link", () => {
+    const message = formatAboutMessage();
+    expect(message).toContain("About Pump &amp; Dump Crypto Screener");
+    expect(message).toContain("aleksent@yahoo.com");
+    expect(message).toContain("https://github.com/aleks-ent/pump-dump-crypto-screener");
+    expect(message).toContain("aleks-ent/pump-dump-crypto-screener");
   });
 });
 
@@ -92,6 +106,7 @@ describe("formatStartMessage", () => {
     expect(message).toContain("Binance and Bybit");
     expect(message).toContain("/stats");
     expect(message).toContain("/runs");
+    expect(message).toContain("/about");
     expect(message).toContain("/stop");
     expect(message).toContain("subscribed");
     expect(message).toContain("aleksent@yahoo.com");

@@ -6,7 +6,7 @@ async function main(): Promise<void> {
   const program = new Command();
   program
     .name("pump-bot")
-    .description("Telegram bot for alerts and commands (/start, /stats, /runs, /stop)")
+    .description("Telegram bot for alerts and commands (/start, /stats, /runs, /about, /stop)")
     .parse(process.argv.slice(2).filter((a) => a !== "--"), { from: "user" });
 
   const config = await loadPumpBotConfig();

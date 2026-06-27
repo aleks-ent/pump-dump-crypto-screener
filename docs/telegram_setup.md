@@ -11,7 +11,7 @@ classifierTelegramChatId: "36772199",
 
 Anyone who discovers the bot can use it without approval. Sending `/start`
 automatically subscribes that private chat or group to new pump and dump alerts.
-Subscribers can use `/stats` and `/runs`. Only `classifierTelegramChatId` can classify
+Subscribers can use `/stats`, `/runs`, and `/about`. Only `classifierTelegramChatId` can classify
 episodes; that chat's alerts include **Pump | Dump | None** buttons, while other
 subscribers receive alerts without those buttons.
 
@@ -69,6 +69,7 @@ Available commands:
 | `/start` | Subscribe to automatic pump and dump alerts |
 | `/stats` | Show the latest detected pumps |
 | `/runs` | Show recent scanner runs and status |
+| `/about` | Show project details, repository link, and contact email |
 | `/stop` | Unsubscribe from automatic alerts; commands still work |
 
 `/stop` does not remove `classifierTelegramChatId`; that chat is intentionally always
@@ -113,6 +114,6 @@ API traffic. Do not publish the bot token itself.
 |---------|-----|
 | Bot does not reply in a group | Add the bot to the group; some groups need `/setprivacy` disabled in BotFather (`/setprivacy` → your bot → **Disable**) so it sees all messages |
 | User does not receive alerts | Send `/start` in that exact private chat or group |
-| User no longer wants alerts | Send `/stop`; `/stats` and `/runs` remain available |
+| User no longer wants alerts | Send `/stop`; `/stats`, `/runs`, and `/about` remain available |
 | Classifier chat does not see buttons | Send `/start` in that chat and verify `classifierTelegramChatId` matches its chat ID |
 | Alerts work, buttons do not | Run `pnpm pump:bot` alongside or after `pump:monitor` |

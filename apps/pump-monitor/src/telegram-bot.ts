@@ -20,6 +20,7 @@ import {
   answerCallbackQuery,
   editMessageText,
   formatClassifiedPumpMessage,
+  formatAboutMessage,
   formatMonitorRunsMessage,
   formatPumpStatsMessages,
   formatStartMessage,
@@ -329,7 +330,7 @@ export async function runTelegramBot(
   let offset = loadUpdateOffset(baseDir);
 
   log(
-    `Public Telegram bot listening (/start, /stats, /runs, /stop; classification restricted to chat ${config.telegram.classifierChatId})`,
+    `Public Telegram bot listening (/start, /stats, /runs, /about, /stop; classification restricted to chat ${config.telegram.classifierChatId})`,
   );
   if (opts?.migrateLegacySubscribers !== false) {
     await initializeTelegramSubscribers(
@@ -386,6 +387,12 @@ export async function runTelegramBot(
         log(`Handling /runs for ${chatId}`);
         await handleRunsCommand(config, chatId);
         log(`Sent /runs reply to ${chatId}`);
+      } else if (command === "/about") {
+        log(`Handling /about for ${chatId}`);
+        await sendTelegramMessage(replyConfig, formatAboutMessage(), {
+          replyMarkup: buildCommandReplyKeyboard(),
+        });
+        log(`Sent /about reply to ${chatId}`);
       } else if (command === "/stop") {
         if (chatId === config.telegram.classifierChatId) {
           await sendTelegramMessage(
@@ -402,7 +409,7 @@ export async function runTelegramBot(
         await sendTelegramMessage(
           replyConfig,
           unsubscribed
-            ? "You are unsubscribed from automatic alerts. You can still use /stats and /runs, or press /start to subscribe again."
+            ? "You are unsubscribed from automatic alerts. You can still use /stats, /runs, and /about, or press /start to subscribe again."
             : "You are not subscribed to automatic alerts. Press /start to subscribe.",
           { replyMarkup: buildCommandReplyKeyboard() },
         );

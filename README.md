@@ -19,7 +19,7 @@ You need two free accounts (~2 minutes each):
 | Service | Why | Setup |
 |---------|-----|--------|
 | **[Turso](https://turso.tech)** | Stores pumps, monitor runs, and Telegram subscribers | [Turso CLI](https://docs.turso.tech/cli): `turso db create screener` → copy URL + auth token into `config.js` |
-| **Telegram** | Pump alerts and `/stats` / `/runs` bot | [@BotFather](https://t.me/BotFather) → `/newbot` → see [docs/telegram_setup.md](docs/telegram_setup.md) |
+| **Telegram** | Pump alerts and `/stats` / `/runs` / `/about` bot | [@BotFather](https://t.me/BotFather) → `/newbot` → see [docs/telegram_setup.md](docs/telegram_setup.md) |
 
 ### 1. Install dependencies and configure
 
@@ -28,7 +28,7 @@ pnpm install
 cp config.example.js config.js   # fill in Turso + Telegram (see table above)
 ```
 
-Edit `config.js` — at minimum, configure `database`, `telegramBotToken`, and your private `classifierTelegramChatId`. Anyone who sends `/start` is automatically subscribed to alerts and can use `/stats` and `/runs`; only the configured chat can classify alerts. Pump lookback and scan settings live under `pump` (defaults in [`config.example.js`](config.example.js)):
+Edit `config.js` — at minimum, configure `database`, `telegramBotToken`, and your private `classifierTelegramChatId`. Anyone who sends `/start` is automatically subscribed to alerts and can use `/stats`, `/runs`, and `/about`; only the configured chat can classify alerts. Pump lookback and scan settings live under `pump` (defaults in [`config.example.js`](config.example.js)):
 
 ```javascript
 database: {
@@ -60,7 +60,7 @@ Production runs are defined in [`ecosystem.config.cjs`](ecosystem.config.cjs) at
 | PM2 name | What it runs | Role |
 |----------|--------------|------|
 | `pump-monitor` | `pnpm pump:monitor` | Download → scan → persist pumps → Telegram alerts |
-| `pump-bot` | `pnpm pump:bot` | `/stats`, `/runs`, and **Pump \| Dump \| None** button clicks |
+| `pump-bot` | `pnpm pump:bot` | `/stats`, `/runs`, `/about`, and **Pump \| Dump \| None** button clicks |
 
 ```bash
 pm2 start ecosystem.config.cjs
@@ -114,7 +114,7 @@ On disk: `data/market_stats/` (`archives/`, `api_fallback/raw/`, `reports/`). Ca
 Alerts sent to `classifierTelegramChatId` have **Pump | Dump | None** buttons. `pump-bot` verifies the callback came from that chat before writing `pumps.classification`; other subscribers receive the same alerts without classification buttons.
 
 <p align="center">
-  <img src="docs/assets/telegram-bot-alert.png" alt="Telegram bot — pump alert with peak score, window, TradingView link, and /stats /runs commands" width="400"/>
+  <img src="docs/assets/telegram-bot-alert.png" alt="Telegram bot — pump alert with peak score, window, TradingView link, and /stats /runs /about commands" width="400"/>
 </p>
 
 Turso bootstrap (one-time):
