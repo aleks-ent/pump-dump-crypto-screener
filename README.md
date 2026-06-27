@@ -37,6 +37,10 @@ database: {
 },
 telegramBotToken: "123456789:ABC...",
 classifierTelegramChatId: "36772199",
+web: {
+  port: 80,       // plain HTTP; no HTTPS or external web server
+  host: "0.0.0.0",
+},
 pump: {
   days: 5,        // lookback calendar days for download + scan
   minScore: 80,
@@ -55,12 +59,13 @@ Run `pnpm build` again after every code change — PM2 does not rebuild for you.
 
 ### 3. Start with PM2
 
-Production runs are defined in [`ecosystem.config.cjs`](ecosystem.config.cjs) at the repo root. It starts two processes:
+Production runs are defined in [`ecosystem.config.cjs`](ecosystem.config.cjs) at the repo root. It starts three processes:
 
 | PM2 name | What it runs | Role |
 |----------|--------------|------|
 | `pump-monitor` | `pnpm pump:monitor` | Download → scan → persist pumps → Telegram alerts |
 | `pump-bot` | `pnpm pump:bot` | `/stats`, `/runs`, `/about`, and **Pump \| Dump \| None** button clicks |
+| `pump-web` | `pnpm pump:web` | Plain HTTP page showing the last 10 stored pumps |
 
 ```bash
 pm2 start ecosystem.config.cjs
@@ -70,9 +75,11 @@ pm2 start ecosystem.config.cjs
   <img src="docs/assets/pm2-monit.png" alt="pm2 monit dashboard — pump-monitor and pump-bot processes with live pipeline logs" width="900"/>
 </p>
 
-PM2 keeps both processes alive. When `pump-monitor` finishes a pipeline run it exits; PM2 immediately starts the next run (`autorestart: true`). That replaces a manual cron loop.
+PM2 keeps all processes alive. When `pump-monitor` finishes a pipeline run it exits; PM2 immediately starts the next run (`autorestart: true`). That replaces a manual cron loop.
 
 **First run** downloads `pump.days` of candles into `data/market_stats/` — network + disk required; can take hours. Market data is not in the repository.
+
+The web page is served directly by the Node app at `http://<server>/` on port `80` by default. On Linux/macOS, binding port `80` may require running PM2 with sufficient privileges or granting Node permission to bind low ports; change `web.port` or `PORT` only if you intentionally want a non-standard port.
 
 Persist PM2 across reboots:
 
@@ -88,16 +95,18 @@ pm2 status
 pm2 logs                          # all apps
 pm2 logs pump-monitor             # download + scan pipeline
 pm2 logs pump-bot                 # Telegram bot
+pm2 logs pump-web                 # HTTP page
 
 pm2 restart ecosystem.config.cjs  # after config.js or code changes (rebuild first)
 pm2 restart pump-monitor          # restart pipeline only
 pm2 restart pump-bot              # restart bot only
+pm2 restart pump-web              # restart HTTP page only
 
 pm2 stop ecosystem.config.cjs
 pm2 delete ecosystem.config.cjs
 ```
 
-After editing `config.js`, restart the affected process (`pm2 restart pump-monitor` or `pump-bot`). No PM2 reload is needed for config-only changes if you restart.
+After editing `config.js`, restart the affected process (`pm2 restart pump-monitor`, `pump-bot`, or `pump-web`). No PM2 reload is needed for config-only changes if you restart.
 
 **Classification buttons** need `pump-bot` running — it is included in `ecosystem.config.cjs`, not optional in production.
 
@@ -167,7 +176,7 @@ Useful flags: `--days`, `--exchanges`, `--quote-currencies`, `--discover`, `--js
 
 ## Workspace layout
 
-- `ecosystem.config.cjs` — PM2 process definitions (`pump-monitor`, `pump-bot`)
+- `ecosystem.config.cjs` — PM2 process definitions (`pump-monitor`, `pump-bot`, `pump-web`)
 - `config.js` — Turso, Telegram bot token, `pump.*`, `fetch.intervals` (copy from `config.example.js`)
 - `packages/core` — HTTP client, config, pull window
 - `packages/exchanges` — exchange adapters
@@ -178,5 +187,5 @@ Useful flags: `--days`, `--exchanges`, `--quote-currencies`, `--discover`, `--js
 - `packages/db` — screener database (Turso/libSQL)
 - `packages/pump-detector` — pump regime detection ([PUMP_DETECTION_RULES.md](PUMP_DETECTION_RULES.md))
 - `apps/run-pump-detector` — scan worker pool and `pump_events.ndjson`
-- `apps/pump-monitor` — fetch + scan + Turso + Telegram alerts
+- `apps/pump-monitor` — fetch + scan + Turso + Telegram alerts + HTTP pump page
 - `apps/fetch-market-stats` — REST candle pull CLI (standalone; not used by `pump-monitor`)

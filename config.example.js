@@ -12,6 +12,10 @@ export default {
     url: "",
     authToken: "",
   },
+  web: {
+    port: 80,
+    host: "0.0.0.0",
+  },
   pump: {
     days: 5,
     minScore: 80,

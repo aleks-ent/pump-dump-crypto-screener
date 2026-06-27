@@ -14,6 +14,7 @@
     "scan:pumps": "pnpm --filter run-pump-detector start",
     "pump:monitor": "pnpm --filter pump-monitor start",
     "pump:bot": "pnpm --filter pump-monitor run bot",
+    "pump:web": "pnpm --filter pump-monitor run web",
     "telegram:backfill-subscribers": "pnpm --filter pump-monitor run backfill:telegram-subscribers",
     "db:bootstrap": "pnpm --filter @screener/db run bootstrap",
     "pump:import-index": "pnpm --filter @screener/db run import-pump-index"

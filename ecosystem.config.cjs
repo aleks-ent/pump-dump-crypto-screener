@@ -14,6 +14,18 @@ module.exports = {
       restart_delay: 0,
     },
     {
+      name: "pump-web",
+      script: "pnpm",
+      args: "pump:web",
+      cwd: __dirname,
+      interpreter: "none",
+      instances: 1,
+      exec_mode: "fork",
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 0,
+    },
+    {
       name: "pump-monitor",
       script: "pnpm",
       args: "pump:monitor",

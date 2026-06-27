@@ -7,9 +7,10 @@
     "pump-monitor": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsup src/cli.ts src/bot.ts src/backfill-telegram-subscribers.ts --format esm --dts --clean",
+    "build": "tsup src/cli.ts src/bot.ts src/web.ts src/backfill-telegram-subscribers.ts --format esm --dts --clean",
     "start": "tsx src/cli.ts",
     "bot": "tsx src/bot.ts",
+    "web": "tsx src/web.ts",
     "backfill:telegram-subscribers": "tsx src/backfill-telegram-subscribers.ts"
   },
   "dependencies": {
