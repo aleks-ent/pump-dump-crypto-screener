@@ -26,7 +26,7 @@ describe("Telegram recipient cleanup", () => {
     [403, "Forbidden: user is deactivated"],
     [403, "Forbidden: bot was kicked from the group chat"],
     [400, "Bad Request: chat not found"],
-  ])("removes a permanently unavailable recipient", async (code, description) => {
+  ])("unsubscribes a permanently unavailable recipient", async (code, description) => {
     const unsubscribe = vi.fn().mockResolvedValue(true);
     const result = await cleanupUnavailableTelegramRecipient(
       { unsubscribe },
@@ -34,7 +34,7 @@ describe("Telegram recipient cleanup", () => {
       new TelegramApiError("sendMessage", code, code, description),
     );
 
-    expect(result).toEqual({ permanent: true, removed: true });
+    expect(result).toEqual({ permanent: true, unsubscribed: true });
     expect(unsubscribe).toHaveBeenCalledWith("12345");
   });
 
@@ -50,7 +50,7 @@ describe("Telegram recipient cleanup", () => {
       error,
     );
 
-    expect(result).toEqual({ permanent: false, removed: false });
+    expect(result).toEqual({ permanent: false, unsubscribed: false });
     expect(unsubscribe).not.toHaveBeenCalled();
   });
 
@@ -69,7 +69,7 @@ describe("Telegram recipient cleanup", () => {
 
     expect(result).toEqual({
       permanent: true,
-      removed: false,
+      unsubscribed: false,
       cleanupError,
     });
   });

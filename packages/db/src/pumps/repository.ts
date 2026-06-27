@@ -284,6 +284,7 @@ export async function applySchema(client: Client, schemaPath?: string): Promise<
 
   // Legacy DBs have pumps without episode_type; indexes must run after this.
   await migratePumpsEpisodeType(client);
+  await migrateTelegramSubscribersState(client);
 
   for (const statement of statements) {
     if (!/^CREATE TABLE/i.test(statement)) {
@@ -298,6 +299,32 @@ async function migratePumpsEpisodeType(client: Client): Promise<void> {
   } catch {
     await client.execute(
       "ALTER TABLE pumps ADD COLUMN episode_type TEXT NOT NULL DEFAULT 'pump'",
+    );
+  }
+}
+
+async function migrateTelegramSubscribersState(client: Client): Promise<void> {
+  try {
+    await client.execute("SELECT subscribed FROM telegram_subscribers LIMIT 1");
+  } catch {
+    await client.execute(
+      "ALTER TABLE telegram_subscribers ADD COLUMN subscribed INTEGER NOT NULL DEFAULT 1",
+    );
+  }
+
+  try {
+    await client.execute("SELECT unsubscribed_at FROM telegram_subscribers LIMIT 1");
+  } catch {
+    await client.execute(
+      "ALTER TABLE telegram_subscribers ADD COLUMN unsubscribed_at TEXT",
+    );
+  }
+
+  try {
+    await client.execute("SELECT subscriber_data FROM telegram_subscribers LIMIT 1");
+  } catch {
+    await client.execute(
+      "ALTER TABLE telegram_subscribers ADD COLUMN subscriber_data TEXT",
     );
   }
 }

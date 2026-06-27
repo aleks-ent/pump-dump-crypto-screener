@@ -25,10 +25,10 @@ pnpm db:bootstrap
 ```
 
 The bot and monitor also apply the schema defensively when they start. Both processes
-insert `classifierTelegramChatId` into `telegram_subscribers` with
-`INSERT OR IGNORE`, so it is always in the stored recipient list without duplicates.
-Running `./update.sh` performs the build and `pnpm db:bootstrap` automatically before
-restarting PM2.
+ensure `classifierTelegramChatId` is marked `subscribed = 1` in
+`telegram_subscribers`, so it is always in the active recipient list without
+duplicates. Running `./update.sh` performs the build and `pnpm db:bootstrap`
+automatically before restarting PM2.
 
 ## 1. Create a bot and get the token
 
@@ -78,14 +78,31 @@ Groups work too: add the bot to a group and send `/start` there. A group is one
 subscription, so `/stop` from any group member unsubscribes that group.
 
 Subscriber chat IDs are stored in the shared Turso database and survive bot restarts
-and code deployments. Existing IDs from the old
+and code deployments. `/stop` keeps the row, sets `subscribed = 0`, and records
+`unsubscribed_at`; `/start` sets `subscribed = 1` again and clears
+`unsubscribed_at`. When a chat sends `/start`, the bot also calls Telegram `getChat`
+and stores a JSON snapshot in `subscriber_data`; the top-level `description` field is
+filled from Telegram `bio` for private chats or `description` for groups when
+Telegram exposes it. Existing IDs from the old
 `data/market_stats/reports/telegram_subscribers.json` file are imported once
-automatically.
+automatically with `subscriber_data = NULL`.
 
 If Telegram reports that a user blocked the bot, deactivated their account, or that a
-chat no longer exists, the monitor removes that chat from the subscriber table and
-continues sending to everyone else. Temporary network errors and rate limits do not
-unsubscribe users.
+chat no longer exists, the monitor marks that chat unsubscribed and continues sending
+to everyone else. Temporary network errors and rate limits do not unsubscribe users.
+
+To backfill the new subscriber columns for rows already in Turso, run:
+
+```bash
+pnpm telegram:backfill-subscribers
+```
+
+The script applies the schema first, normalizes active rows, and fills missing
+`subscriber_data` with Telegram `getChat`. Use `pnpm telegram:backfill-subscribers
+-- --dry-run` to count rows without writing, `--all` to refresh existing snapshots,
+`--limit N` for a partial run, and `--delay-ms N` to change the pause between
+Telegram API calls. It cannot reconstruct rows that were deleted before subscriber
+retention was added.
 
 The commands query your Turso database, so public usage increases database and Telegram
 API traffic. Do not publish the bot token itself.

@@ -36,6 +36,9 @@ CREATE TABLE IF NOT EXISTS monitor_runs (
 CREATE INDEX IF NOT EXISTS idx_monitor_runs_started_at ON monitor_runs(started_at DESC);
 
 CREATE TABLE IF NOT EXISTS telegram_subscribers (
-  chat_id       TEXT PRIMARY KEY NOT NULL,
-  subscribed_at TEXT NOT NULL
+  chat_id         TEXT PRIMARY KEY NOT NULL,
+  subscribed_at   TEXT NOT NULL,
+  subscribed      INTEGER NOT NULL DEFAULT 1 CHECK (subscribed IN (0, 1)),
+  unsubscribed_at TEXT,
+  subscriber_data TEXT
 );

@@ -258,19 +258,19 @@ async function runMonitorPipeline(args: {
       if (cleanup.permanent) {
         if (cleanup.cleanupError) {
           console.error(
-            `Failed to remove Telegram chat ${chatId} from subscribers: ${
+            `Failed to mark Telegram chat ${chatId} unsubscribed: ${
               cleanup.cleanupError instanceof Error
                 ? cleanup.cleanupError.message
                 : String(cleanup.cleanupError)
             }`,
           );
-        } else if (cleanup.removed) {
+        } else if (cleanup.unsubscribed) {
           console.error(
-            `Removed permanently unavailable Telegram chat ${chatId}`,
+            `Marked permanently unavailable Telegram chat ${chatId} unsubscribed`,
           );
         } else {
           console.error(
-            `Permanently unavailable Telegram chat ${chatId} was not present in the subscriber table`,
+            `Permanently unavailable Telegram chat ${chatId} was not an active subscriber`,
           );
         }
       }

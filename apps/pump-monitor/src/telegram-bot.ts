@@ -24,6 +24,7 @@ import {
   formatPumpStatsMessages,
   formatStartMessage,
   buildCommandReplyKeyboard,
+  fetchTelegramSubscriberData,
   normalizeTelegramChatId,
   sendTelegramMessage,
   type TelegramConfig,
@@ -198,6 +199,26 @@ function telegramConfigForChat(
   return { ...config.telegram, chatId };
 }
 
+function formatUnknownError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function fetchSubscriberDataForStart(
+  config: TelegramRuntimeConfig,
+  chatId: string,
+  capturedAt: string,
+  log: (msg: string) => void,
+): Promise<string | null> {
+  try {
+    return await fetchTelegramSubscriberData(config, chatId, capturedAt);
+  } catch (error) {
+    log(
+      `Failed to fetch Telegram subscriber data for ${chatId}: ${formatUnknownError(error)}`,
+    );
+    return null;
+  }
+}
+
 export async function handleStatsCommand(
   config: PumpBotConfig,
   chatId: string,
@@ -337,8 +358,15 @@ export async function runTelegramBot(
       const replyConfig = telegramConfigForChat(config, chatId);
 
       if (command === "/start") {
+        const subscribedAt = new Date().toISOString();
+        const subscriberData = await fetchSubscriberDataForStart(
+          config.telegram,
+          chatId,
+          subscribedAt,
+          log,
+        );
         const added = await withTelegramSubscriberRepository((repo) =>
-          repo.subscribe(chatId, new Date().toISOString()),
+          repo.subscribe(chatId, subscribedAt, subscriberData),
         );
         await sendTelegramMessage(
           replyConfig,
@@ -368,17 +396,19 @@ export async function runTelegramBot(
           log(`Kept classifier Telegram chat ${chatId} subscribed`);
           continue;
         }
-        const removed = await withTelegramSubscriberRepository((repo) =>
+        const unsubscribed = await withTelegramSubscriberRepository((repo) =>
           repo.unsubscribe(chatId),
         );
         await sendTelegramMessage(
           replyConfig,
-          removed
+          unsubscribed
             ? "You are unsubscribed from automatic alerts. You can still use /stats and /runs, or press /start to subscribe again."
             : "You are not subscribed to automatic alerts. Press /start to subscribe.",
           { replyMarkup: buildCommandReplyKeyboard() },
         );
-        log(`${removed ? "Unsubscribed" : "Subscription not found for"} ${chatId}`);
+        log(
+          `${unsubscribed ? "Unsubscribed" : "Active subscription not found for"} ${chatId}`,
+        );
       }
     }
   }

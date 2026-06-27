@@ -38,6 +38,13 @@ interface TelegramErrorPayload {
   description?: unknown;
 }
 
+interface TelegramSuccessPayload {
+  ok?: unknown;
+  result?: unknown;
+  error_code?: unknown;
+  description?: unknown;
+}
+
 export class TelegramApiError extends Error {
   constructor(
     readonly method: string,
@@ -342,7 +349,7 @@ async function telegramPost(
   config: TelegramApiConfig,
   method: string,
   body: Record<string, unknown>,
-) {
+): Promise<Response> {
   const url = `https://api.telegram.org/bot${config.botToken}/${method}`;
   const response = await fetch(url, {
     method: "POST",
@@ -371,6 +378,52 @@ async function telegramPost(
       description,
     );
   }
+
+  return response;
+}
+
+function telegramProfileDescription(chat: unknown): string | null {
+  if (chat == null || typeof chat !== "object") return null;
+  const record = chat as Record<string, unknown>;
+  if (typeof record.bio === "string") return record.bio;
+  if (typeof record.description === "string") return record.description;
+  return null;
+}
+
+export function serializeTelegramSubscriberData(
+  chat: unknown,
+  capturedAt: string = new Date().toISOString(),
+): string {
+  return JSON.stringify({
+    source: "telegram.getChat",
+    captured_at: capturedAt,
+    description: telegramProfileDescription(chat),
+    chat,
+  });
+}
+
+export async function fetchTelegramSubscriberData(
+  config: TelegramApiConfig,
+  chatId: string,
+  capturedAt: string = new Date().toISOString(),
+): Promise<string> {
+  const response = await telegramPost(config, "getChat", { chat_id: chatId });
+  const payload = (await response.json()) as TelegramSuccessPayload;
+  if (payload.ok !== true) {
+    const errorCode =
+      typeof payload.error_code === "number" ? payload.error_code : response.status;
+    const description =
+      typeof payload.description === "string"
+        ? payload.description
+        : "Telegram getChat returned ok=false";
+    throw new TelegramApiError(
+      "getChat",
+      response.status,
+      errorCode,
+      description,
+    );
+  }
+  return serializeTelegramSubscriberData(payload.result, capturedAt);
 }
 
 export async function sendTelegramMessage(

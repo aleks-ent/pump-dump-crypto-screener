@@ -5,12 +5,16 @@ interface TelegramSubscriberRemover {
 }
 
 interface TelegramSubscriberEnsurer {
-  subscribe(chatId: string, subscribedAt: string): Promise<boolean>;
+  subscribe(
+    chatId: string,
+    subscribedAt: string,
+    subscriberData?: string | null,
+  ): Promise<boolean>;
 }
 
 export interface TelegramRecipientCleanupResult {
   permanent: boolean;
-  removed: boolean;
+  unsubscribed: boolean;
   cleanupError?: unknown;
 }
 
@@ -28,17 +32,17 @@ export async function cleanupUnavailableTelegramRecipient(
   error: unknown,
 ): Promise<TelegramRecipientCleanupResult> {
   if (!isPermanentTelegramRecipientError(error)) {
-    return { permanent: false, removed: false };
+    return { permanent: false, unsubscribed: false };
   }
   try {
     return {
       permanent: true,
-      removed: await repo.unsubscribe(chatId),
+      unsubscribed: await repo.unsubscribe(chatId),
     };
   } catch (cleanupError) {
     return {
       permanent: true,
-      removed: false,
+      unsubscribed: false,
       cleanupError,
     };
   }
