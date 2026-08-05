@@ -11,6 +11,7 @@ import {
 } from "@screener/db";
 import { resolveRepoPath } from "@screener/core";
 import { handleReviewApiRequest } from "./review-api.js";
+import { handleReviewCandleApiRequest } from "./review-candle-api.js";
 
 const DEFAULT_WEB_PORT = 3000;
 const DEFAULT_WEB_HOST = "127.0.0.1";
@@ -205,6 +206,9 @@ async function handleRequest(
   reviewRepo: PumpReviewRepository,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
+  if (url.pathname === "/api/market-data/candles") {
+    if (await handleReviewCandleApiRequest(req, res, reviewRepo)) return;
+  }
   if (url.pathname.startsWith("/api/pump-events")) {
     if (await handleReviewApiRequest(req, res, reviewRepo)) return;
   }
