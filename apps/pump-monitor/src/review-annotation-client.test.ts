@@ -65,5 +65,7 @@ describe("review annotation client", () => {
     expect(REVIEW_ANNOTATION_CLIENT_SCRIPT).toContain("retryButton.addEventListener('click'");
     expect(REVIEW_ANNOTATION_CLIENT_SCRIPT).toContain("review:annotation-saved");
     expect(REVIEW_ANNOTATION_CLIENT_SCRIPT).toContain("review:annotation-dirty-change");
+    expect(REVIEW_ANNOTATION_CLIENT_SCRIPT).toContain("review:annotation-save-request");
+    expect(REVIEW_ANNOTATION_CLIENT_SCRIPT).toContain("review:navigate-request");
   });
 });

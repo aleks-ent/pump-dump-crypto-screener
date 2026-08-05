@@ -51,6 +51,10 @@ describe("renderReviewPage", () => {
     expect(html).toContain("31%");
     expect(html).toContain("Historical chart");
     expect(html).toContain("Classify event");
+    expect(html).toContain("Keyboard shortcuts");
+    expect(html).toContain('data-unsaved-dialog');
+    expect(html).toContain("review:annotation-save-request");
+    expect(html).toContain("beforeunload");
     expect(html).toContain("@media (max-width:1050px)");
   });
 

@@ -213,7 +213,11 @@ export const REVIEW_ANNOTATION_CLIENT_SCRIPT = String.raw`
                 return;
               }
               showState('success', 'Saved. Opening the next event…', false);
-              window.location.assign(next.href);
+              const navigationEvent = new CustomEvent('review:navigate-request', {
+                cancelable: true,
+                detail: { href: next.href, focusOnArrival: true }
+              });
+              if (document.dispatchEvent(navigationEvent)) window.location.assign(next.href);
               return;
             }
             showState('success', 'Annotation saved.', false);
@@ -230,6 +234,10 @@ export const REVIEW_ANNOTATION_CLIENT_SCRIPT = String.raw`
         });
         saveNextButton.addEventListener('click', () => save('next'));
         retryButton.addEventListener('click', () => save(lastAction));
+        root.addEventListener('review:annotation-save-request', (event) => {
+          const action = event.detail && event.detail.action === 'next' ? 'next' : 'save';
+          save(action);
+        });
         form.addEventListener('input', announceDirtyState);
         form.addEventListener('change', announceDirtyState);
       };
