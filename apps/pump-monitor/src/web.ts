@@ -6,9 +6,11 @@ import {
   createDbClient,
   loadDatabaseConfig,
   PumpRepository,
+  PumpReviewRepository,
   type StoredPump,
 } from "@screener/db";
 import { resolveRepoPath } from "@screener/core";
+import { handleReviewApiRequest } from "./review-api.js";
 
 const DEFAULT_WEB_PORT = 3000;
 const DEFAULT_WEB_HOST = "127.0.0.1";
@@ -200,13 +202,18 @@ async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
   repo: PumpRepository,
+  reviewRepo: PumpReviewRepository,
 ): Promise<void> {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  if (url.pathname.startsWith("/api/pump-events")) {
+    if (await handleReviewApiRequest(req, res, reviewRepo)) return;
+  }
+
   if (req.method !== "GET" && req.method !== "HEAD") {
     send(res, 405, "Method not allowed\n", "text/plain; charset=utf-8");
     return;
   }
 
-  const url = new URL(req.url ?? "/", "http://localhost");
   const headOnly = req.method === "HEAD";
   if (url.pathname === "/healthz") {
     send(res, 200, "ok\n", "text/plain; charset=utf-8", headOnly);
@@ -241,10 +248,11 @@ export async function createPumpWebServer(
   const dbConfig = await loadDatabaseConfig();
   const client = createDbClient(dbConfig);
   const repo = new PumpRepository(client);
+  const reviewRepo = new PumpReviewRepository(client);
   await repo.applySchema();
 
   const server = createServer((req, res) => {
-    void handleRequest(req, res, repo).catch((error: unknown) => {
+    void handleRequest(req, res, repo, reviewRepo).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       log(`Web request failed: ${message}`);
       if (!res.headersSent) {
