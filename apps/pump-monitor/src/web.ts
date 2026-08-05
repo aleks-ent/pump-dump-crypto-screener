@@ -13,6 +13,7 @@ import {
 import { resolveRepoPath } from "@screener/core";
 import { handleReviewApiRequest, parsePumpEventFilters } from "./review-api.js";
 import { handleReviewCandleApiRequest } from "./review-candle-api.js";
+import { handleReviewExportRequest } from "./review-export.js";
 import {
   renderReviewPage,
   type ReviewEventSummary,
@@ -282,6 +283,9 @@ async function handleRequest(
   const url = new URL(req.url ?? "/", "http://localhost");
   if (url.pathname === "/api/market-data/candles") {
     if (await handleReviewCandleApiRequest(req, res, reviewRepo)) return;
+  }
+  if (url.pathname === "/api/pump-events/export") {
+    if (await handleReviewExportRequest(req, res, reviewRepo)) return;
   }
   if (url.pathname.startsWith("/api/pump-events")) {
     if (await handleReviewApiRequest(req, res, reviewRepo)) return;

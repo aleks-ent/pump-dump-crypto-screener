@@ -204,6 +204,39 @@ function reviewQuery(
   return `/review?${escapeHtml(params.toString())}`;
 }
 
+function reviewExportQuery(
+  filters: ReviewFilters,
+  format: "json" | "csv",
+  scope: "filtered" | "all-reviewed",
+): string {
+  const params = new URLSearchParams({ format, scope });
+  if (scope === "filtered") {
+    params.set("status", filters.status);
+    if (filters.category !== "all") params.set("category", filters.category);
+    if (filters.exchange) params.set("exchange", filters.exchange);
+    if (filters.symbol) params.set("symbol", filters.symbol);
+    if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
+    if (filters.dateTo) params.set("dateTo", filters.dateTo);
+    params.set("sort", filters.sort);
+  }
+  return `/api/pump-events/export?${escapeHtml(params.toString())}`;
+}
+
+function renderExportMenu(filters: ReviewFilters): string {
+  return `<details class="export-menu" data-export-menu>
+    <summary>Export</summary>
+    <div>
+      <strong>Current filters</strong>
+      <a href="${reviewExportQuery(filters, "json", "filtered")}" data-review-export>JSON</a>
+      <a href="${reviewExportQuery(filters, "csv", "filtered")}" data-review-export>CSV</a>
+      <strong>All labeled events</strong>
+      <a href="${reviewExportQuery(filters, "json", "all-reviewed")}" data-review-export>JSON</a>
+      <a href="${reviewExportQuery(filters, "csv", "all-reviewed")}" data-review-export>CSV</a>
+    </div>
+    <span class="export-feedback" data-export-feedback aria-live="polite"></span>
+  </details>`;
+}
+
 function renderProgress(progress: ReviewProgress): string {
   const completed = Math.max(0, progress.reviewed + progress.unclear);
   const percentage =
@@ -361,7 +394,7 @@ export function renderReviewPage(options: ReviewPageOptions = {}): string {
   <title>Pump Event Review</title>
   <style>
     :root{color-scheme:light;--ink:#17211b;--muted:#68736c;--line:#dce3de;--soft:#f3f6f4;--panel:#fff;--accent:#176b43;--accent-soft:#e5f4eb;--warn:#9a6216;--danger:#a43939;--shadow:0 1px 2px rgba(23,33,27,.06)}
-    *{box-sizing:border-box}html,body{height:100%}body{margin:0;background:#eef2ef;color:var(--ink);font:14px/1.4 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button,input,select,textarea{font:inherit;color:inherit}a{color:inherit}.app-shell{height:100%;min-height:640px;display:flex;flex-direction:column;outline:none}.app-bar{height:60px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.96)}.brand{display:flex;align-items:center;gap:11px}.brand-mark{width:30px;height:30px;display:grid;place-items:center;border-radius:8px;background:var(--ink);color:#fff;font-size:16px}.brand strong{display:block;font-size:15px}.brand span,.app-actions>span{font-size:12px;color:var(--muted)}.app-actions{display:flex;align-items:center;gap:14px}.review-grid{min-height:0;flex:1;display:grid;grid-template-columns:minmax(290px,320px) minmax(520px,1fr) minmax(310px,350px);gap:1px;background:var(--line)}.event-browser,.review-main,.annotation-panel{min-width:0;background:var(--panel)}
+    *{box-sizing:border-box}html,body{height:100%}body{margin:0;background:#eef2ef;color:var(--ink);font:14px/1.4 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button,input,select,textarea{font:inherit;color:inherit}a{color:inherit}.app-shell{height:100%;min-height:640px;display:flex;flex-direction:column;outline:none}.app-bar{height:60px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.96)}.brand{display:flex;align-items:center;gap:11px}.brand-mark{width:30px;height:30px;display:grid;place-items:center;border-radius:8px;background:var(--ink);color:#fff;font-size:16px}.brand strong{display:block;font-size:15px}.brand span,.app-actions>span{font-size:12px;color:var(--muted)}.app-actions{display:flex;align-items:center;gap:10px}.export-menu{position:relative}.export-menu summary{list-style:none;border:1px solid #bdc8c0;border-radius:7px;padding:6px 9px;background:#fff;font-size:11px;font-weight:700;cursor:pointer}.export-menu summary::-webkit-details-marker{display:none}.export-menu>div{position:absolute;z-index:20;top:calc(100% + 8px);right:0;width:210px;display:grid;grid-template-columns:1fr 1fr;gap:6px;border:1px solid var(--line);border-radius:10px;padding:11px;background:#fff;box-shadow:0 10px 30px rgba(23,33,27,.18)}.export-menu strong{grid-column:1/-1;color:var(--muted);font-size:10px;text-transform:uppercase}.export-menu a{border:1px solid var(--line);border-radius:6px;padding:6px;text-align:center;text-decoration:none;font-size:11px;font-weight:700}.export-menu a:hover{background:var(--soft)}.export-feedback{position:absolute;top:calc(100% + 7px);right:0;width:230px;color:var(--danger);font-size:10px;text-align:right}.review-grid{min-height:0;flex:1;display:grid;grid-template-columns:minmax(290px,320px) minmax(520px,1fr) minmax(310px,350px);gap:1px;background:var(--line)}.event-browser,.review-main,.annotation-panel{min-width:0;background:var(--panel)}
     .event-browser{display:flex;flex-direction:column;overflow:hidden}.browser-head{padding:15px 15px 12px;border-bottom:1px solid var(--line)}.browser-title{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}.browser-title h2,.annotation-panel h2{margin:0;font-size:18px}.browser-title span{color:var(--muted);font-size:12px}.filter-form{display:grid;grid-template-columns:1fr 1fr;gap:8px}.filter-form label{display:grid;gap:4px;color:var(--muted);font-size:11px;font-weight:650;letter-spacing:.02em}.filter-form .span-two{grid-column:1/-1}.search-wrap{display:flex}.search-wrap input{border-radius:7px 0 0 7px}.search-wrap button{width:36px;border:1px solid #bdc8c0;border-left:0;border-radius:0 7px 7px 0;background:var(--soft);cursor:pointer}.filter-form input,.filter-form select,.annotation-panel select,.annotation-panel textarea{width:100%;min-width:0;border:1px solid #bdc8c0;border-radius:7px;background:#fff;padding:7px 8px;outline:none}.filter-form input:focus,.filter-form select:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}.date-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}.progress-card{padding:12px 15px;border-bottom:1px solid var(--line);background:#fbfcfb}.progress-summary{display:flex;align-items:baseline;gap:4px;font-size:12px}.progress-summary strong{font-size:16px}.progress-summary span{margin-left:auto;color:var(--accent);font-weight:700}.progress-track{height:5px;margin:8px 0 10px;overflow:hidden;border-radius:99px;background:#dce5df}.progress-track span{display:block;height:100%;background:var(--accent)}.progress-counts{display:grid;grid-template-columns:repeat(3,1fr);margin:0}.progress-counts div+div{border-left:1px solid var(--line);padding-left:10px}.progress-counts dt{color:var(--muted);font-size:10px}.progress-counts dd{margin:1px 0 0;font-size:12px;font-weight:700}.event-list{min-height:0;flex:1;overflow-y:auto}.event-row{position:relative;display:grid;gap:3px;padding:11px 14px 11px 17px;border-bottom:1px solid #e9eeea;text-decoration:none}.event-row:hover{background:var(--soft)}.event-row:focus-visible{z-index:1;outline:2px solid var(--accent);outline-offset:-2px}.event-row.is-selected{background:var(--accent-soft)}.event-row.is-selected:before{position:absolute;inset:0 auto 0 0;width:4px;background:var(--accent);content:""}.event-row-top{display:flex;justify-content:space-between}.event-row>span:not(.event-row-top){color:var(--muted);font-size:11px}.event-score{padding:1px 6px;border-radius:99px;background:#e7ece8;color:#425047;font-size:10px}.event-status{display:flex;align-items:center;gap:5px}.event-status i{width:6px;height:6px;border-radius:50%;background:#a9b2ac}.status-reviewed .event-status i{background:var(--accent)}.status-unclear .event-status i{background:#d69332}.list-footer{flex:none;padding:10px 14px;border-top:1px solid var(--line);background:#fbfcfb}.load-more,.list-message a{display:block;border:1px solid #bdc8c0;border-radius:7px;padding:8px;text-align:center;text-decoration:none;font-weight:650;background:#fff}.list-end{margin:0;color:var(--muted);text-align:center;font-size:11px}.list-message{display:flex;min-height:210px;align-items:center;justify-content:center;flex-direction:column;gap:7px;padding:25px;text-align:center;color:var(--muted)}.list-message strong{color:var(--ink)}.list-message a{margin-top:6px;width:100%;color:var(--ink)}.list-error strong{color:var(--danger)}.spinner{width:22px;height:22px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
     .review-main{overflow:auto}.event-context{min-height:100%;display:flex;flex-direction:column;padding:18px}.event-header{display:flex;justify-content:space-between;gap:24px;padding:2px 2px 16px}.eyebrow{margin:0 0 3px;color:var(--accent);font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase}.event-header h1{margin:0;font-size:25px;line-height:1.15}.event-header h1+p{margin:5px 0 0;color:var(--muted)}.event-header dl{width:min(50%,360px);margin:0;display:grid;gap:4px}.event-header dl div{display:grid;grid-template-columns:70px minmax(0,1fr);gap:8px}.event-header dt{color:var(--muted);font-size:11px}.event-header dd{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:600}.trigger-strip{display:flex;gap:20px;margin-bottom:12px;padding:9px 11px;border:1px solid #d9e4dc;border-radius:7px;background:#f6faf7;color:var(--muted);font-size:11px}.trigger-strip strong{color:var(--ink)}.chart-card{min-height:410px;flex:1;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;background:#fbfcfb;box-shadow:var(--shadow);overflow:hidden}.chart-toolbar{height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 13px;border-bottom:1px solid var(--line);background:#fff}.chart-toolbar strong,.chart-toolbar span{display:block}.chart-toolbar span{margin-top:2px;color:var(--muted);font-size:10px}.timeframe-switch{display:flex}.timeframe-switch button{border:1px solid var(--line);padding:5px 9px;background:#fff;color:var(--muted);cursor:pointer}.timeframe-switch button:first-child{border-radius:6px 0 0 6px}.timeframe-switch button:last-child{margin-left:-1px;border-radius:0 6px 6px 0}.timeframe-switch button.is-active{position:relative;background:var(--accent-soft);color:var(--accent);border-color:#a9cdb8}.timeframe-switch button:focus-visible,.chart-message button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.timeframe-switch button:disabled{cursor:wait;opacity:.65}.chart-stage{position:relative;min-height:330px;flex:1;overflow:hidden;background:#fff}.chart-stage svg{display:block;width:100%;height:100%;min-height:330px}.chart-message{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;padding:28px;text-align:center;color:var(--muted);background:linear-gradient(rgba(251,252,251,.94),rgba(251,252,251,.94)),linear-gradient(#edf2ee 1px,transparent 1px),linear-gradient(90deg,#edf2ee 1px,transparent 1px);background-size:auto,48px 42px,48px 42px}.chart-message[hidden]{display:none}.chart-message strong{color:var(--ink)}.chart-message button{margin-top:6px;border:1px solid #bdc8c0;border-radius:7px;padding:7px 15px;background:#fff;font-weight:700;cursor:pointer}.chart-footer{height:31px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 12px;border-top:1px solid var(--line);background:#fff;color:var(--muted);font-size:9px}.chart-footer i{display:inline-block;width:8px;height:8px;margin:0 2px 0 7px;border-radius:2px}.chart-footer i:first-child{margin-left:0}.legend-up{background:#198754}.legend-down{background:#c44b45}.legend-volume{background:#9db4a5}.chart-grid line{stroke:#e7ece8;stroke-width:1;vector-effect:non-scaling-stroke}.chart-grid text{fill:#7a847e;font:9px ui-sans-serif,system-ui}.candle-up .candle-wick,.candle-up .candle-body{stroke:#198754;fill:#198754}.candle-down .candle-wick,.candle-down .candle-body{stroke:#c44b45;fill:#c44b45}.candle-wick{stroke-width:1;vector-effect:non-scaling-stroke}.candle-up .volume-bar{fill:#198754;opacity:.25}.candle-down .volume-bar{fill:#c44b45;opacity:.25}.marker-line{vector-effect:non-scaling-stroke}.marker-line.marker-detection{stroke:#a33d2c;stroke-width:2;stroke-dasharray:5 3}.marker-line.marker-followup{stroke:#bf8b7f;stroke-width:1;stroke-dasharray:3 4}.marker-label-bg.marker-detection{fill:#f6ddd7}.marker-label-bg.marker-followup{fill:#faeeeb}.marker-label{font:700 9px ui-sans-serif,system-ui}.marker-label.marker-detection{fill:#7c2c1e}.marker-label.marker-followup{fill:#9a5a4b}.review-empty{height:100%;min-height:400px;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:40px;text-align:center;color:var(--muted)}.review-empty div{font-size:30px;color:var(--accent)}.review-empty h2{margin:12px 0 3px;color:var(--ink)}.review-empty p{max-width:430px;margin:0}
     .annotation-panel{padding:18px 16px;overflow-y:auto}.annotation-panel header{margin-bottom:17px}.annotation-panel fieldset{margin:0;padding:0;border:0}.annotation-panel legend,.field-label{display:block;margin:0 0 7px;font-size:11px;font-weight:750}.category-list{display:grid;gap:7px;margin-bottom:16px}.category-option{display:grid;grid-template-columns:28px 1fr;align-items:center;gap:8px;padding:8px;border:1px solid var(--line);border-radius:8px;background:#fbfcfb;cursor:pointer}.category-option:hover{border-color:#a9cdb8;background:#f7fbf8}.category-option:has(input:checked){border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 1px var(--accent)}.category-option:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}.category-option input{position:absolute;opacity:0}.category-option kbd{width:26px;height:26px;display:grid;place-items:center;border:1px solid #cbd4ce;border-radius:6px;background:#fff;font:700 11px ui-monospace,monospace}.category-option strong,.category-option small{display:block}.category-option small{margin-top:1px;color:var(--muted);font-size:9px}.field-label{margin-top:13px}.field-label span{color:var(--muted);font-weight:400}.annotation-panel textarea{resize:vertical;min-height:82px}.annotation-panel select:focus,.annotation-panel textarea:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}.save-actions{display:grid;grid-template-columns:1fr 1.35fr;gap:8px;margin-top:15px}.save-actions button{border-radius:7px;padding:9px;border:1px solid #bdc8c0;font-weight:700;cursor:pointer}.save-actions button:disabled{cursor:wait;opacity:.7}.save-actions button:focus-visible,.annotation-feedback button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.button-primary{background:var(--accent);color:#fff}.button-secondary{background:#fff}.annotation-panel fieldset:disabled{opacity:.7}.annotation-feedback{display:flex;align-items:center;justify-content:center;gap:8px;min-height:28px;margin:10px 0 0;color:var(--muted);text-align:center;font-size:10px}.annotation-feedback button{border:1px solid #bdc8c0;border-radius:6px;padding:4px 8px;background:#fff;font-weight:700;cursor:pointer}.annotation-panel[data-annotation-state="success"] .annotation-feedback,.annotation-panel[data-annotation-state="no-more"] .annotation-feedback{color:var(--accent);font-weight:700}.annotation-panel[data-annotation-state="error"] .annotation-feedback,.annotation-panel[data-annotation-state="validation-error"] .annotation-feedback{color:var(--danger);font-weight:700}
@@ -374,7 +407,7 @@ export function renderReviewPage(options: ReviewPageOptions = {}): string {
   <div class="app-shell" data-review-page data-selected-event-id="${selectedId ? escapeHtml(selectedId) : ""}" tabindex="-1">
     <header class="app-bar">
       <div class="brand"><span class="brand-mark" aria-hidden="true">↗</span><div><strong>Pump Event Reviewer</strong><span>Human labeling workspace</span></div></div>
-      <div class="app-actions"><span>All timestamps shown in UTC</span>${renderReviewKeyboardUi()}</div>
+      <div class="app-actions"><span>All timestamps shown in UTC</span>${renderExportMenu(filters)}${renderReviewKeyboardUi()}</div>
     </header>
     <main class="review-grid">
       <aside class="event-browser" aria-label="Event browser">
@@ -429,6 +462,38 @@ export function renderReviewPage(options: ReviewPageOptions = {}): string {
       form.addEventListener('submit', (event) => { event.preventDefault(); navigate(); });
       form.querySelectorAll('select,input[type="date"]').forEach((control) => {
         control.addEventListener('change', navigate);
+      });
+    })();
+    (() => {
+      const feedback = document.querySelector('[data-export-feedback]');
+      document.querySelectorAll('[data-review-export]').forEach((link) => {
+        link.addEventListener('click', async (event) => {
+          event.preventDefault();
+          if (link.getAttribute('aria-busy') === 'true') return;
+          link.setAttribute('aria-busy', 'true');
+          if (feedback) feedback.textContent = 'Preparing export…';
+          try {
+            const response = await fetch(link.href, { headers: { accept: link.href.includes('format=csv') ? 'text/csv' : 'application/json' } });
+            if (!response.ok) {
+              const body = await response.json().catch(() => ({}));
+              throw new Error(body && body.error ? body.error.message : 'Export failed');
+            }
+            const blob = await response.blob();
+            const disposition = response.headers.get('content-disposition') || '';
+            const match = /filename="([^"]+)"/.exec(disposition);
+            const download = document.createElement('a');
+            download.href = URL.createObjectURL(blob);
+            download.download = match ? match[1] : 'pump-event-reviews';
+            download.click();
+            URL.revokeObjectURL(download.href);
+            if (feedback) feedback.textContent = '';
+            document.querySelector('[data-export-menu]')?.removeAttribute('open');
+          } catch (error) {
+            if (feedback) feedback.textContent = error instanceof Error ? error.message : 'Export failed';
+          } finally {
+            link.removeAttribute('aria-busy');
+          }
+        });
       });
     })();
 ${REVIEW_CHART_CLIENT_SCRIPT}

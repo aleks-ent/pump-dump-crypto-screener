@@ -116,6 +116,19 @@ describe("renderReviewPage", () => {
     expect(html).toContain("page=3");
   });
 
+  it("renders filtered and complete JSON/CSV export controls", () => {
+    const html = renderReviewPage({
+      events: [event()],
+      filters: { status: "reviewed", exchange: "bybit", symbol: "FUEL" },
+    });
+
+    expect(html.match(/<a href="[^"]+" data-review-export>/g)).toHaveLength(4);
+    expect(html).toContain("format=json&amp;scope=filtered&amp;status=reviewed");
+    expect(html).toContain("exchange=bybit");
+    expect(html).toContain("scope=all-reviewed");
+    expect(html).toContain("Preparing export");
+  });
+
   it.each([
     ["loading", "Loading events…"],
     ["error", "Database temporarily unavailable"],
