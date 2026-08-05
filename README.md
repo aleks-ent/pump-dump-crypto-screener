@@ -81,6 +81,11 @@ PM2 keeps all processes alive. When `pump-monitor` finishes a pipeline run it ex
 
 The web page is served by `pump-web` on `127.0.0.1:3000` by default. Put nginx in front of it for public HTTP/HTTPS; see [docs/nginx_letsencrypt.md](docs/nginx_letsencrypt.md).
 
+The manual pump-event reviewer is available at `/review`. It uses the existing Turso
+database plus local 1m/5m market data and can optionally require HTTP Basic auth.
+See the [pump review operator guide](docs/pump-event-review/implementation.md) for
+schema setup, market-data requirements, access control, deployment, and release checks.
+
 Persist PM2 across reboots:
 
 ```bash

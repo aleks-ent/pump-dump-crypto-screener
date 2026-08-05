@@ -15,6 +15,13 @@ import { handleReviewApiRequest, parsePumpEventFilters } from "./review-api.js";
 import { handleReviewCandleApiRequest } from "./review-candle-api.js";
 import { handleReviewExportRequest } from "./review-export.js";
 import {
+  assertSafeReviewExposure,
+  authorizeReviewRoute,
+  resolveReviewAuthConfig,
+  type ReviewAuthConfig,
+  type ReviewAuthConfigInput,
+} from "./review-auth.js";
+import {
   renderReviewPage,
   type ReviewEventSummary,
   type ReviewFilters,
@@ -32,12 +39,14 @@ interface WebCliOptions {
 interface WebConfig {
   port: number;
   host: string;
+  reviewAuth?: ReviewAuthConfigInput;
 }
 
 interface ConfigFile {
   web?: {
     port?: string | number;
     host?: string;
+    reviewAuth?: ReviewAuthConfigInput;
   };
 }
 
@@ -77,7 +86,7 @@ async function loadWebConfig(opts: WebCliOptions): Promise<WebConfig> {
     process.env.HOST?.trim() ||
     cfg.web?.host?.trim() ||
     DEFAULT_WEB_HOST;
-  return { port, host };
+  return { port, host, reviewAuth: cfg.web?.reviewAuth };
 }
 
 function fmtUtc(ms: number): string {
@@ -279,8 +288,10 @@ async function handleRequest(
   res: ServerResponse,
   repo: PumpRepository,
   reviewRepo: PumpReviewRepository,
+  reviewAuth: ReviewAuthConfig,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
+  if (!authorizeReviewRoute(req, res, reviewAuth)) return;
   if (url.pathname === "/api/market-data/candles") {
     if (await handleReviewCandleApiRequest(req, res, reviewRepo)) return;
   }
@@ -341,10 +352,12 @@ export async function createPumpWebServer(
   const client = createDbClient(dbConfig);
   const repo = new PumpRepository(client);
   const reviewRepo = new PumpReviewRepository(client);
+  const reviewAuth = resolveReviewAuthConfig(config.reviewAuth);
+  assertSafeReviewExposure(config.host, reviewAuth);
   await repo.applySchema();
 
   const server = createServer((req, res) => {
-    void handleRequest(req, res, repo, reviewRepo).catch((error: unknown) => {
+    void handleRequest(req, res, repo, reviewRepo, reviewAuth).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       log(`Web request failed: ${message}`);
       if (!res.headersSent) {
