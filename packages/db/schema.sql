@@ -26,6 +26,34 @@ CREATE INDEX IF NOT EXISTS idx_pumps_peak_score ON pumps(peak_score);
 CREATE INDEX IF NOT EXISTS idx_pumps_classification ON pumps(classification);
 CREATE INDEX IF NOT EXISTS idx_pumps_episode_type ON pumps(episode_type);
 
+CREATE TABLE IF NOT EXISTS pump_annotations (
+  id         TEXT PRIMARY KEY NOT NULL,
+  event_id   TEXT NOT NULL,
+  source     TEXT NOT NULL DEFAULT 'human'
+             CHECK (source IN ('human', 'ai')),
+  category   TEXT NOT NULL
+             CHECK (category IN (
+               'sustained_move',
+               'wick_spike',
+               'volume_only',
+               'market_move',
+               'illiquid_noise',
+               'unclear'
+             )),
+  confidence TEXT
+             CHECK (confidence IS NULL OR confidence IN ('high', 'medium', 'low')),
+  comment    TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (event_id, source),
+  FOREIGN KEY (event_id) REFERENCES pumps(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_pump_annotations_source_category
+  ON pump_annotations(source, category);
+CREATE INDEX IF NOT EXISTS idx_pump_annotations_updated_at
+  ON pump_annotations(updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS monitor_runs (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   started_at        TEXT NOT NULL,
