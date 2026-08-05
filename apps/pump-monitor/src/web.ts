@@ -120,6 +120,8 @@ function reviewSummary({ pump, annotation, status }: PumpReviewEvent): ReviewEve
     detectedAt: pump.startUtc,
     status,
     category: annotation?.category,
+    confidence: annotation?.confidence,
+    comment: annotation?.comment,
     marketType: pump.instrumentType,
     detectorVersion: null,
     detectorScore: pump.peakScore,

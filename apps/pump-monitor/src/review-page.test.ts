@@ -54,6 +54,27 @@ describe("renderReviewPage", () => {
     expect(html).toContain("@media (max-width:1050px)");
   });
 
+  it("enables editing for the selected event's existing annotation", () => {
+    const html = renderReviewPage({
+      events: [
+        event({
+          status: "reviewed",
+          category: "market_move",
+          confidence: "medium",
+          comment: "Tracked the broader BTC move.",
+        }),
+      ],
+    });
+
+    expect(html).toContain('data-annotation-state="ready"');
+    expect(html).toContain('value="market_move" checked');
+    expect(html).toContain('value="medium" selected');
+    expect(html).toContain("Tracked the broader BTC move.");
+    expect(html).toContain("Editing saved annotation.");
+    expect(html).toContain("/api/pump-events/");
+    expect(html).toContain("method: 'PUT'");
+  });
+
   it("uses the required default filters and preserves filters in event links", () => {
     const html = renderReviewPage({
       events: [event()],
