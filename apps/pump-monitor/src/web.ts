@@ -7,11 +7,17 @@ import {
   loadDatabaseConfig,
   PumpRepository,
   PumpReviewRepository,
+  type PumpReviewEvent,
   type StoredPump,
 } from "@screener/db";
 import { resolveRepoPath } from "@screener/core";
-import { handleReviewApiRequest } from "./review-api.js";
+import { handleReviewApiRequest, parsePumpEventFilters } from "./review-api.js";
 import { handleReviewCandleApiRequest } from "./review-candle-api.js";
+import {
+  renderReviewPage,
+  type ReviewEventSummary,
+  type ReviewFilters,
+} from "./review-page.js";
 
 const DEFAULT_WEB_PORT = 3000;
 const DEFAULT_WEB_HOST = "127.0.0.1";
@@ -103,6 +109,72 @@ function classificationText(pump: StoredPump): string {
       return "None";
     default:
       return "Unclassified";
+  }
+}
+
+function reviewSummary({ pump, annotation, status }: PumpReviewEvent): ReviewEventSummary {
+  return {
+    id: pump.index,
+    symbol: pump.symbolNative,
+    exchange: pump.leadingExchange,
+    detectedAt: pump.startUtc,
+    status,
+    category: annotation?.category,
+    marketType: pump.instrumentType,
+    detectorVersion: null,
+    detectorScore: pump.peakScore,
+    triggerSummary: `${pump.dominantPhase} · ${pump.durationMinutes}m · ${pump.eventCount} trigger${pump.eventCount === 1 ? "" : "s"}`,
+  };
+}
+
+function reviewPageFilters(url: URL): Partial<ReviewFilters> {
+  return {
+    status: (url.searchParams.get("status") ?? "unreviewed") as ReviewFilters["status"],
+    category: (url.searchParams.get("category") ?? "all") as ReviewFilters["category"],
+    exchange: url.searchParams.get("exchange") ?? "",
+    symbol: url.searchParams.get("symbol") ?? "",
+    dateFrom: url.searchParams.get("dateFrom") ?? "",
+    dateTo: url.searchParams.get("dateTo") ?? "",
+    detectorVersion: "",
+    sort: (url.searchParams.get("sort") ?? "detectedAtAsc") as ReviewFilters["sort"],
+  };
+}
+
+async function renderReviewWorkspace(
+  url: URL,
+  reviewRepo: PumpReviewRepository,
+): Promise<string> {
+  try {
+    const filters = parsePumpEventFilters(url.searchParams);
+    const [result, progress] = await Promise.all([
+      reviewRepo.listReviewEvents(filters),
+      reviewRepo.getReviewStats(),
+    ]);
+    const events = result.items.map(reviewSummary);
+    const selectedEventId = url.searchParams.get("event");
+    if (selectedEventId && !events.some((event) => event.id === selectedEventId)) {
+      const selected = await reviewRepo.getReviewEvent(selectedEventId);
+      if (selected) events.unshift(reviewSummary(selected));
+    }
+    return renderReviewPage({
+      events,
+      selectedEventId,
+      filters: reviewPageFilters(url),
+      progress,
+      pagination: {
+        page: result.page,
+        pageSize: result.pageSize,
+        loadedCount: events.length,
+        hasMore: result.page * result.pageSize < result.total,
+      },
+      listState: "ready",
+    });
+  } catch (error) {
+    return renderReviewPage({
+      filters: reviewPageFilters(url),
+      listState: "error",
+      errorMessage: error instanceof Error ? error.message : "Could not load review events",
+    });
   }
 }
 
@@ -225,6 +297,16 @@ async function handleRequest(
   }
   if (url.pathname === "/favicon.ico") {
     send(res, 204, "", "text/plain; charset=utf-8", headOnly);
+    return;
+  }
+  if (url.pathname === "/review") {
+    send(
+      res,
+      200,
+      await renderReviewWorkspace(url, reviewRepo),
+      "text/html; charset=utf-8",
+      headOnly,
+    );
     return;
   }
   if (url.pathname !== "/" && url.pathname !== "/pumps") {

@@ -1,0 +1,451 @@
+export type PumpReviewCategory =
+  | "sustained_move"
+  | "wick_spike"
+  | "volume_only"
+  | "market_move"
+  | "illiquid_noise"
+  | "unclear";
+
+export type ReviewStatus = "unreviewed" | "reviewed" | "unclear";
+export type ReviewStatusFilter = "all" | ReviewStatus;
+export type ReviewSort =
+  | "detectedAtDesc"
+  | "detectedAtAsc"
+  | "unreviewedFirst"
+  | "symbolAsc";
+
+export interface ReviewEventSummary {
+  id: string;
+  symbol: string;
+  exchange: string;
+  detectedAt: string | number | Date;
+  status: ReviewStatus;
+  category?: PumpReviewCategory | null;
+  marketType?: string | null;
+  detectorVersion?: string | null;
+  detectorScore?: number | null;
+  triggerSummary?: string | null;
+}
+
+export interface ReviewFilters {
+  status: ReviewStatusFilter;
+  category: "all" | PumpReviewCategory;
+  exchange: string;
+  symbol: string;
+  dateFrom: string;
+  dateTo: string;
+  detectorVersion: string;
+  sort: ReviewSort;
+}
+
+export interface ReviewProgress {
+  total: number;
+  reviewed: number;
+  unreviewed: number;
+  unclear: number;
+}
+
+export interface ReviewFilterOptions {
+  exchanges?: string[];
+  detectorVersions?: string[];
+}
+
+export interface ReviewPagination {
+  page: number;
+  pageSize: number;
+  loadedCount?: number;
+  hasMore: boolean;
+}
+
+export interface ReviewPageOptions {
+  events?: ReviewEventSummary[];
+  selectedEventId?: string | null;
+  filters?: Partial<ReviewFilters>;
+  progress?: Partial<ReviewProgress>;
+  filterOptions?: ReviewFilterOptions;
+  pagination?: Partial<ReviewPagination>;
+  listState?: "ready" | "loading" | "error";
+  errorMessage?: string;
+}
+
+const CATEGORIES: ReadonlyArray<{
+  value: PumpReviewCategory;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: "sustained_move",
+    label: "Sustained move",
+    hint: "Directional move with continuation",
+  },
+  {
+    value: "wick_spike",
+    label: "Wick spike",
+    hint: "Brief spike without continuation",
+  },
+  {
+    value: "volume_only",
+    label: "Volume only",
+    hint: "Activity increased without a price move",
+  },
+  {
+    value: "market_move",
+    label: "Market move",
+    hint: "Moved with the broader market",
+  },
+  {
+    value: "illiquid_noise",
+    label: "Illiquid noise",
+    hint: "Sparse, unreliable, or untradeable market",
+  },
+  {
+    value: "unclear",
+    label: "Unclear",
+    hint: "Insufficient or ambiguous evidence",
+  },
+];
+
+const DEFAULT_FILTERS: ReviewFilters = {
+  status: "unreviewed",
+  category: "all",
+  exchange: "",
+  symbol: "",
+  dateFrom: "",
+  dateTo: "",
+  detectorVersion: "",
+  sort: "detectedAtAsc",
+};
+
+const DEFAULT_PAGINATION: ReviewPagination = {
+  page: 1,
+  pageSize: 50,
+  hasMore: false,
+};
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function formatUtc(value: string | number | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return escapeHtml(String(value));
+  return `${date.toISOString().slice(0, 19).replace("T", " ")} UTC`;
+}
+
+function categoryLabel(category: PumpReviewCategory): string {
+  return CATEGORIES.find((item) => item.value === category)?.label ?? category;
+}
+
+function statusLabel(event: ReviewEventSummary): string {
+  if (event.status === "unreviewed") return "Unreviewed";
+  if (event.status === "unclear") return "Unclear";
+  return "Reviewed";
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values.filter((value) => value.trim() !== ""))].sort((a, b) =>
+    a.localeCompare(b),
+  );
+}
+
+function renderOptions(
+  values: string[],
+  selectedValue: string,
+  emptyLabel: string,
+): string {
+  const options = [`<option value="">${escapeHtml(emptyLabel)}</option>`];
+  for (const value of values) {
+    options.push(
+      `<option value="${escapeHtml(value)}"${value === selectedValue ? " selected" : ""}>${escapeHtml(value)}</option>`,
+    );
+  }
+  return options.join("");
+}
+
+function reviewQuery(
+  filters: ReviewFilters,
+  extras: Record<string, string | number | undefined> = {},
+): string {
+  const params = new URLSearchParams();
+  params.set("status", filters.status);
+  if (filters.category !== "all") params.set("category", filters.category);
+  if (filters.exchange) params.set("exchange", filters.exchange);
+  if (filters.symbol) params.set("symbol", filters.symbol);
+  if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
+  if (filters.dateTo) params.set("dateTo", filters.dateTo);
+  if (filters.detectorVersion) {
+    params.set("detectorVersion", filters.detectorVersion);
+  }
+  params.set("sort", filters.sort);
+  for (const [key, value] of Object.entries(extras)) {
+    if (value !== undefined && String(value) !== "") params.set(key, String(value));
+  }
+  return `/review?${escapeHtml(params.toString())}`;
+}
+
+function renderProgress(progress: ReviewProgress): string {
+  const completed = Math.max(0, progress.reviewed + progress.unclear);
+  const percentage =
+    progress.total === 0
+      ? 0
+      : Math.min(100, Math.round((completed / progress.total) * 100));
+  return `<section class="progress-card" aria-label="Review progress" data-review-progress>
+          <div class="progress-summary"><strong>${completed.toLocaleString()}</strong> / ${progress.total.toLocaleString()} reviewed <span>${percentage}%</span></div>
+          <div class="progress-track" aria-hidden="true"><span style="width:${percentage}%"></span></div>
+          <dl class="progress-counts">
+            <div><dt>Reviewed</dt><dd>${progress.reviewed.toLocaleString()}</dd></div>
+            <div><dt>Unreviewed</dt><dd>${progress.unreviewed.toLocaleString()}</dd></div>
+            <div><dt>Unclear</dt><dd>${progress.unclear.toLocaleString()}</dd></div>
+          </dl>
+        </section>`;
+}
+
+function renderEventRow(
+  event: ReviewEventSummary,
+  selected: boolean,
+  filters: ReviewFilters,
+  page: number,
+): string {
+  const category = event.category ? categoryLabel(event.category) : null;
+  const details =
+    category && event.status === "reviewed" ? ` · ${category}` : "";
+  const score =
+    event.detectorScore == null
+      ? ""
+      : `<span class="event-score" title="Detector score">${escapeHtml(String(event.detectorScore))}</span>`;
+  return `<a class="event-row status-${event.status}${selected ? " is-selected" : ""}"
+            href="${reviewQuery(filters, { event: event.id, page })}"
+            data-event-row data-event-id="${escapeHtml(event.id)}" data-review-status="${event.status}"
+            ${selected ? 'aria-current="true"' : ""}>
+          <span class="event-row-top"><strong>${escapeHtml(event.symbol)}</strong>${score}</span>
+          <span>${escapeHtml(event.exchange)} · ${formatUtc(event.detectedAt)}</span>
+          <span class="event-status"><i aria-hidden="true"></i>${statusLabel(event)}${escapeHtml(details)}</span>
+        </a>`;
+}
+
+function renderListState(
+  options: ReviewPageOptions,
+  events: ReviewEventSummary[],
+  selectedId: string | null,
+  filters: ReviewFilters,
+  pagination: ReviewPagination,
+): string {
+  if (options.listState === "loading") {
+    return `<div class="list-message" role="status" data-list-state="loading">
+      <span class="spinner" aria-hidden="true"></span>
+      <strong>Loading events…</strong><span>Fetching matching detections.</span>
+    </div>`;
+  }
+  if (options.listState === "error") {
+    return `<div class="list-message list-error" role="alert" data-list-state="error">
+      <strong>Could not load events</strong>
+      <span>${escapeHtml(options.errorMessage ?? "Try refreshing the review page.")}</span>
+      <a href="${reviewQuery(filters)}">Try again</a>
+    </div>`;
+  }
+  if (events.length === 0) {
+    return `<div class="list-message" data-list-state="empty">
+      <strong>No matching events</strong>
+      <span>Adjust the filters or clear them to see more detections.</span>
+      <a href="/review?status=unreviewed&amp;sort=detectedAtAsc">Reset filters</a>
+    </div>`;
+  }
+  return events
+    .map((event) =>
+      renderEventRow(event, event.id === selectedId, filters, pagination.page),
+    )
+    .join("\n");
+}
+
+function renderSelectedEvent(event: ReviewEventSummary | null): string {
+  if (!event) {
+    return `<section class="review-empty" data-selection-state="empty">
+      <div aria-hidden="true">↖</div>
+      <h2>Select an event to begin</h2>
+      <p>Choose a detection from the event list. The first unreviewed event is selected automatically when results are available.</p>
+    </section>`;
+  }
+  const metadata = [event.exchange, event.marketType].filter(Boolean).join(" · ");
+  return `<section class="event-context" data-event-context data-event-id="${escapeHtml(event.id)}">
+        <header class="event-header">
+          <div>
+            <p class="eyebrow">Selected event</p>
+            <h1>${escapeHtml(event.symbol)}</h1>
+            <p>${escapeHtml(metadata)}</p>
+          </div>
+          <dl>
+            <div><dt>Detected</dt><dd>${formatUtc(event.detectedAt)}</dd></div>
+            <div><dt>Detector</dt><dd>${escapeHtml(event.detectorVersion ?? "Unknown version")}</dd></div>
+            <div><dt>Event ID</dt><dd title="${escapeHtml(event.id)}">${escapeHtml(event.id)}</dd></div>
+          </dl>
+        </header>
+        ${
+          event.triggerSummary || event.detectorScore != null
+            ? `<div class="trigger-strip" data-trigger-summary>
+                ${event.detectorScore != null ? `<span><strong>Score</strong> ${escapeHtml(String(event.detectorScore))}</span>` : ""}
+                ${event.triggerSummary ? `<span><strong>Trigger</strong> ${escapeHtml(event.triggerSummary)}</span>` : ""}
+              </div>`
+            : ""
+        }
+        <div class="chart-card" data-chart-root data-chart-state="placeholder" data-event-id="${escapeHtml(event.id)}">
+          <div class="chart-toolbar">
+            <div><strong>Historical price</strong><span>2h before · 2h after detection</span></div>
+            <div class="timeframe-placeholder" aria-label="Chart timeframe placeholder">
+              <button type="button" class="is-active" disabled>1m</button><button type="button" disabled>5m</button>
+            </div>
+          </div>
+          <div class="chart-placeholder" role="status">
+            <div class="placeholder-candles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <span class="detection-line" aria-hidden="true"><b>Detection</b></span>
+            <strong>Historical chart</strong>
+            <p>Candles and event markers will load here.</p>
+          </div>
+        </div>
+      </section>`;
+}
+
+function renderAnnotationPlaceholder(event: ReviewEventSummary | null): string {
+  return `<aside class="annotation-panel" aria-label="Annotation" data-annotation-root data-event-id="${event ? escapeHtml(event.id) : ""}" data-annotation-state="placeholder">
+      <header><p class="eyebrow">Human annotation</p><h2>Classify event</h2></header>
+      <fieldset disabled>
+        <legend>Category</legend>
+        <div class="category-list">
+          ${CATEGORIES.map(
+            (category, index) => `<label class="category-option" data-category="${category.value}">
+              <input type="radio" name="category" value="${category.value}">
+              <kbd>${index + 1}</kbd><span><strong>${category.label}</strong><small>${category.hint}</small></span>
+            </label>`,
+          ).join("")}
+        </div>
+        <label class="field-label" for="review-confidence">Confidence</label>
+        <select id="review-confidence"><option>High</option><option>Medium</option><option>Low</option></select>
+        <label class="field-label" for="review-comment">Comment <span>optional</span></label>
+        <textarea id="review-comment" rows="4" placeholder="What happened? Why was this a good or bad detection?"></textarea>
+        <div class="save-actions"><button type="button" class="button-secondary">Save</button><button type="button" class="button-primary">Save &amp; Next</button></div>
+      </fieldset>
+      <p class="panel-placeholder-note">${event ? "Annotation controls will be enabled when the annotation service is connected." : "Select an event to enable annotation controls."}</p>
+    </aside>`;
+}
+
+export function renderReviewPage(options: ReviewPageOptions = {}): string {
+  const events = options.events ?? [];
+  const filters: ReviewFilters = { ...DEFAULT_FILTERS, ...options.filters };
+  const progress: ReviewProgress = {
+    total: options.progress?.total ?? events.length,
+    reviewed:
+      options.progress?.reviewed ??
+      events.filter((event) => event.status === "reviewed").length,
+    unreviewed:
+      options.progress?.unreviewed ??
+      events.filter((event) => event.status === "unreviewed").length,
+    unclear:
+      options.progress?.unclear ??
+      events.filter((event) => event.status === "unclear").length,
+  };
+  const pagination: ReviewPagination = {
+    ...DEFAULT_PAGINATION,
+    ...options.pagination,
+  };
+  const selectedEvent =
+    events.find((event) => event.id === options.selectedEventId) ??
+    events.find((event) => event.status === "unreviewed") ??
+    events[0] ??
+    null;
+  const selectedId = selectedEvent?.id ?? null;
+  const exchanges = uniqueSorted([
+    ...(options.filterOptions?.exchanges ?? []),
+    ...events.map((event) => event.exchange),
+  ]);
+  const detectorVersions = uniqueSorted([
+    ...(options.filterOptions?.detectorVersions ?? []),
+    ...events.flatMap((event) =>
+      event.detectorVersion ? [event.detectorVersion] : [],
+    ),
+  ]);
+  const loadedCount = pagination.loadedCount ?? events.length;
+  const loadMore = pagination.hasMore
+    ? `<a class="load-more" href="${reviewQuery(filters, { page: pagination.page + 1 })}" data-load-more>Load more events</a>`
+    : `<p class="list-end">${loadedCount.toLocaleString()} event${loadedCount === 1 ? "" : "s"} shown</p>`;
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pump Event Review</title>
+  <style>
+    :root{color-scheme:light;--ink:#17211b;--muted:#68736c;--line:#dce3de;--soft:#f3f6f4;--panel:#fff;--accent:#176b43;--accent-soft:#e5f4eb;--warn:#9a6216;--danger:#a43939;--shadow:0 1px 2px rgba(23,33,27,.06)}
+    *{box-sizing:border-box}html,body{height:100%}body{margin:0;background:#eef2ef;color:var(--ink);font:14px/1.4 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button,input,select,textarea{font:inherit;color:inherit}a{color:inherit}.app-shell{height:100%;min-height:640px;display:flex;flex-direction:column}.app-bar{height:60px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.96)}.brand{display:flex;align-items:center;gap:11px}.brand-mark{width:30px;height:30px;display:grid;place-items:center;border-radius:8px;background:var(--ink);color:#fff;font-size:16px}.brand strong{display:block;font-size:15px}.brand span,.app-bar>span{font-size:12px;color:var(--muted)}.review-grid{min-height:0;flex:1;display:grid;grid-template-columns:minmax(290px,320px) minmax(520px,1fr) minmax(310px,350px);gap:1px;background:var(--line)}.event-browser,.review-main,.annotation-panel{min-width:0;background:var(--panel)}
+    .event-browser{display:flex;flex-direction:column;overflow:hidden}.browser-head{padding:15px 15px 12px;border-bottom:1px solid var(--line)}.browser-title{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}.browser-title h2,.annotation-panel h2{margin:0;font-size:18px}.browser-title span{color:var(--muted);font-size:12px}.filter-form{display:grid;grid-template-columns:1fr 1fr;gap:8px}.filter-form label{display:grid;gap:4px;color:var(--muted);font-size:11px;font-weight:650;letter-spacing:.02em}.filter-form .span-two{grid-column:1/-1}.search-wrap{display:flex}.search-wrap input{border-radius:7px 0 0 7px}.search-wrap button{width:36px;border:1px solid #bdc8c0;border-left:0;border-radius:0 7px 7px 0;background:var(--soft);cursor:pointer}.filter-form input,.filter-form select,.annotation-panel select,.annotation-panel textarea{width:100%;min-width:0;border:1px solid #bdc8c0;border-radius:7px;background:#fff;padding:7px 8px;outline:none}.filter-form input:focus,.filter-form select:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}.date-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}.progress-card{padding:12px 15px;border-bottom:1px solid var(--line);background:#fbfcfb}.progress-summary{display:flex;align-items:baseline;gap:4px;font-size:12px}.progress-summary strong{font-size:16px}.progress-summary span{margin-left:auto;color:var(--accent);font-weight:700}.progress-track{height:5px;margin:8px 0 10px;overflow:hidden;border-radius:99px;background:#dce5df}.progress-track span{display:block;height:100%;background:var(--accent)}.progress-counts{display:grid;grid-template-columns:repeat(3,1fr);margin:0}.progress-counts div+div{border-left:1px solid var(--line);padding-left:10px}.progress-counts dt{color:var(--muted);font-size:10px}.progress-counts dd{margin:1px 0 0;font-size:12px;font-weight:700}.event-list{min-height:0;flex:1;overflow-y:auto}.event-row{position:relative;display:grid;gap:3px;padding:11px 14px 11px 17px;border-bottom:1px solid #e9eeea;text-decoration:none}.event-row:hover{background:var(--soft)}.event-row:focus-visible{z-index:1;outline:2px solid var(--accent);outline-offset:-2px}.event-row.is-selected{background:var(--accent-soft)}.event-row.is-selected:before{position:absolute;inset:0 auto 0 0;width:4px;background:var(--accent);content:""}.event-row-top{display:flex;justify-content:space-between}.event-row>span:not(.event-row-top){color:var(--muted);font-size:11px}.event-score{padding:1px 6px;border-radius:99px;background:#e7ece8;color:#425047;font-size:10px}.event-status{display:flex;align-items:center;gap:5px}.event-status i{width:6px;height:6px;border-radius:50%;background:#a9b2ac}.status-reviewed .event-status i{background:var(--accent)}.status-unclear .event-status i{background:#d69332}.list-footer{flex:none;padding:10px 14px;border-top:1px solid var(--line);background:#fbfcfb}.load-more,.list-message a{display:block;border:1px solid #bdc8c0;border-radius:7px;padding:8px;text-align:center;text-decoration:none;font-weight:650;background:#fff}.list-end{margin:0;color:var(--muted);text-align:center;font-size:11px}.list-message{display:flex;min-height:210px;align-items:center;justify-content:center;flex-direction:column;gap:7px;padding:25px;text-align:center;color:var(--muted)}.list-message strong{color:var(--ink)}.list-message a{margin-top:6px;width:100%;color:var(--ink)}.list-error strong{color:var(--danger)}.spinner{width:22px;height:22px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+    .review-main{overflow:auto}.event-context{min-height:100%;display:flex;flex-direction:column;padding:18px}.event-header{display:flex;justify-content:space-between;gap:24px;padding:2px 2px 16px}.eyebrow{margin:0 0 3px;color:var(--accent);font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase}.event-header h1{margin:0;font-size:25px;line-height:1.15}.event-header h1+p{margin:5px 0 0;color:var(--muted)}.event-header dl{width:min(50%,360px);margin:0;display:grid;gap:4px}.event-header dl div{display:grid;grid-template-columns:70px minmax(0,1fr);gap:8px}.event-header dt{color:var(--muted);font-size:11px}.event-header dd{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:600}.trigger-strip{display:flex;gap:20px;margin-bottom:12px;padding:9px 11px;border:1px solid #d9e4dc;border-radius:7px;background:#f6faf7;color:var(--muted);font-size:11px}.trigger-strip strong{color:var(--ink)}.chart-card{min-height:410px;flex:1;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;background:#fbfcfb;box-shadow:var(--shadow);overflow:hidden}.chart-toolbar{height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 13px;border-bottom:1px solid var(--line);background:#fff}.chart-toolbar strong,.chart-toolbar span{display:block}.chart-toolbar span{margin-top:2px;color:var(--muted);font-size:10px}.timeframe-placeholder{display:flex}.timeframe-placeholder button{border:1px solid var(--line);padding:5px 9px;background:#fff;color:var(--muted)}.timeframe-placeholder button:first-child{border-radius:6px 0 0 6px}.timeframe-placeholder button:last-child{margin-left:-1px;border-radius:0 6px 6px 0}.timeframe-placeholder button.is-active{background:var(--accent-soft);color:var(--accent)}.chart-placeholder{position:relative;min-height:350px;flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;overflow:hidden;background:linear-gradient(#f1f4f2 1px,transparent 1px),linear-gradient(90deg,#f1f4f2 1px,transparent 1px);background-size:48px 42px;color:var(--muted)}.chart-placeholder strong{color:#4b5750}.chart-placeholder p{margin:3px 0}.placeholder-candles{position:absolute;inset:auto 9% 30% 8%;height:46%;display:flex;align-items:flex-end;justify-content:space-around;opacity:.3}.placeholder-candles i{width:8%;border-radius:2px 2px 0 0;background:#79a98c}.placeholder-candles i:nth-child(1){height:20%}.placeholder-candles i:nth-child(2){height:42%}.placeholder-candles i:nth-child(3){height:35%}.placeholder-candles i:nth-child(4){height:71%}.placeholder-candles i:nth-child(5){height:55%}.placeholder-candles i:nth-child(6){height:84%}.placeholder-candles i:nth-child(7){height:66%}.detection-line{position:absolute;top:48px;bottom:24px;left:56%;border-left:2px dashed #be6b56}.detection-line b{position:absolute;top:0;left:5px;padding:2px 5px;border-radius:4px;background:#f8e5df;color:#8e3e2c;font-size:9px}.review-empty{height:100%;min-height:400px;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:40px;text-align:center;color:var(--muted)}.review-empty div{font-size:30px;color:var(--accent)}.review-empty h2{margin:12px 0 3px;color:var(--ink)}.review-empty p{max-width:430px;margin:0}
+    .annotation-panel{padding:18px 16px;overflow-y:auto}.annotation-panel header{margin-bottom:17px}.annotation-panel fieldset{margin:0;padding:0;border:0}.annotation-panel legend,.field-label{display:block;margin:0 0 7px;font-size:11px;font-weight:750}.category-list{display:grid;gap:7px;margin-bottom:16px}.category-option{display:grid;grid-template-columns:28px 1fr;align-items:center;gap:8px;padding:8px;border:1px solid var(--line);border-radius:8px;background:#fbfcfb}.category-option input{position:absolute;opacity:0}.category-option kbd{width:26px;height:26px;display:grid;place-items:center;border:1px solid #cbd4ce;border-radius:6px;background:#fff;font:700 11px ui-monospace,monospace}.category-option strong,.category-option small{display:block}.category-option small{margin-top:1px;color:var(--muted);font-size:9px}.field-label{margin-top:13px}.field-label span{color:var(--muted);font-weight:400}.annotation-panel textarea{resize:vertical;min-height:82px}.save-actions{display:grid;grid-template-columns:1fr 1.35fr;gap:8px;margin-top:15px}.save-actions button{border-radius:7px;padding:9px;border:1px solid #bdc8c0;font-weight:700}.button-primary{background:var(--accent);color:#fff}.button-secondary{background:#fff}.annotation-panel fieldset:disabled{opacity:.7}.panel-placeholder-note{margin:12px 0 0;color:var(--muted);text-align:center;font-size:10px}
+    @media (max-width:1050px){.app-shell{height:auto}.review-grid{grid-template-columns:300px minmax(0,1fr)}.annotation-panel{grid-column:1/-1;min-height:auto;border-top:1px solid var(--line)}.annotation-panel fieldset{display:grid;grid-template-columns:1fr 1fr;gap:12px}.category-list{grid-column:1/-1;grid-template-columns:repeat(3,1fr)}.field-label{margin:0}.save-actions{align-self:end}}
+    @media (max-width:720px){.app-bar{padding:0 14px}.app-bar>span{display:none}.review-grid{display:block}.event-browser{max-height:none}.event-list{max-height:440px}.review-main{min-height:560px}.event-header{display:block}.event-header dl{width:100%;margin-top:14px}.annotation-panel fieldset{display:block}.category-list{display:grid;grid-template-columns:1fr}.field-label{margin-top:13px}}
+  </style>
+</head>
+<body>
+  <div class="app-shell" data-review-page data-selected-event-id="${selectedId ? escapeHtml(selectedId) : ""}">
+    <header class="app-bar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">↗</span><div><strong>Pump Event Reviewer</strong><span>Human labeling workspace</span></div></div>
+      <span>All timestamps shown in UTC</span>
+    </header>
+    <main class="review-grid">
+      <aside class="event-browser" aria-label="Event browser">
+        <div class="browser-head">
+          <div class="browser-title"><h2>Events</h2><span>${progress.total.toLocaleString()} total</span></div>
+          <form class="filter-form" action="/review" method="get" data-review-filters>
+            <label class="span-two">Symbol search<div class="search-wrap"><input type="search" name="symbol" value="${escapeHtml(filters.symbol)}" placeholder="e.g. FUELUSDT"><button type="submit" aria-label="Search">⌕</button></div></label>
+            <label>Status<select name="status">
+              <option value="all"${filters.status === "all" ? " selected" : ""}>All</option><option value="unreviewed"${filters.status === "unreviewed" ? " selected" : ""}>Unreviewed</option><option value="reviewed"${filters.status === "reviewed" ? " selected" : ""}>Reviewed</option><option value="unclear"${filters.status === "unclear" ? " selected" : ""}>Unclear</option>
+            </select></label>
+            <label>Category<select name="category"><option value="all">All categories</option>${CATEGORIES.map((category) => `<option value="${category.value}"${filters.category === category.value ? " selected" : ""}>${category.label}</option>`).join("")}</select></label>
+            <label>Exchange<select name="exchange">${renderOptions(exchanges, filters.exchange, "All exchanges")}</select></label>
+            <label>Detector<select name="detectorVersion">${renderOptions(detectorVersions, filters.detectorVersion, "All versions")}</select></label>
+            <div class="date-pair span-two">
+              <label>From<input type="date" name="dateFrom" value="${escapeHtml(filters.dateFrom)}"></label>
+              <label>To<input type="date" name="dateTo" value="${escapeHtml(filters.dateTo)}"></label>
+            </div>
+            <label class="span-two">Sort<select name="sort">
+              <option value="detectedAtAsc"${filters.sort === "detectedAtAsc" ? " selected" : ""}>Detection time: oldest first</option><option value="detectedAtDesc"${filters.sort === "detectedAtDesc" ? " selected" : ""}>Detection time: newest first</option><option value="unreviewedFirst"${filters.sort === "unreviewedFirst" ? " selected" : ""}>Unreviewed first</option><option value="symbolAsc"${filters.sort === "symbolAsc" ? " selected" : ""}>Symbol: A–Z</option>
+            </select></label>
+          </form>
+        </div>
+        ${renderProgress(progress)}
+        <nav class="event-list" aria-label="Matching events" data-event-list>
+          ${renderListState(options, events, selectedId, filters, pagination)}
+        </nav>
+        <footer class="list-footer">${options.listState && options.listState !== "ready" ? "" : loadMore}</footer>
+      </aside>
+      <section class="review-main" aria-label="Chart and event context">
+        ${renderSelectedEvent(selectedEvent)}
+      </section>
+      ${renderAnnotationPlaceholder(selectedEvent)}
+    </main>
+  </div>
+  <script>
+    (() => {
+      const form = document.querySelector('[data-review-filters]');
+      if (!form) return;
+      const navigate = () => {
+        const params = new URLSearchParams(new FormData(form));
+        for (const [key, value] of [...params.entries()]) {
+          if (!String(value).trim() || (key === 'category' && value === 'all')) params.delete(key);
+        }
+        params.delete('event');
+        params.delete('page');
+        window.location.assign('/review?' + params.toString());
+      };
+      form.addEventListener('submit', (event) => { event.preventDefault(); navigate(); });
+      form.querySelectorAll('select,input[type="date"]').forEach((control) => {
+        control.addEventListener('change', navigate);
+      });
+    })();
+  </script>
+</body>
+</html>`;
+}
