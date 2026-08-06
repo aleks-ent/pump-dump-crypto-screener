@@ -20,7 +20,7 @@ describe("review chart client", () => {
     expect(html).toContain('data-chart-interval="1m"');
     expect(html).toContain('data-chart-interval="5m"');
     expect(html).toContain('aria-label="Historical OHLCV chart for the selected event"');
-    expect(html).toContain("2h before · 2h after detection");
+    expect(html).toContain("2h before · 2h after pump time");
     expect(html).toContain("data-chart-retry");
     expect(html).toContain("TradingView fallback");
     expect(html).toContain("TradingView 1m");
@@ -62,7 +62,7 @@ describe("review chart client", () => {
     expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("eventId,");
     expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("detectedAtMs - CONTEXT_MS");
     expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("detectedAtMs + CONTEXT_MS");
-    expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("[0, 'Detection', true]");
+    expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("[0, 'Pump start', true]");
     expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("[5 * 60, '+5m', false]");
     expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("[10 * 60, '+10m', false]");
     expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("[15 * 60, '+15m', false]");

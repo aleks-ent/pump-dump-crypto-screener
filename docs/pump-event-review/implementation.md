@@ -78,6 +78,11 @@ in TradingView to open **Go to date**. The adjacent **Copy pump time** action co
 exact UTC detection timestamp for that dialog. TradingView availability and intraday
 history depth still depend on the symbol and the reviewer's TradingView plan.
 
+The reviewer UI intentionally omits detector version, detector score, trigger summary,
+and detector-specific filters. Those values remain untouched in the source event data
+and labeled-data exports for future analysis; they are simply outside the current human
+review workflow. Detection time and chart markers remain visible to locate the event.
+
 ## Access control
 
 Authentication is optional for a loopback-only deployment. Without credentials, the
@@ -151,6 +156,7 @@ back the database by deleting annotation data.
 - [ ] Save & Next persists category, confidence, and comment, then advances once.
 - [ ] A reviewed annotation can be revisited and edited without duplication.
 - [ ] Filters, progress totals, next-event behavior, and unsaved-change protection work.
+- [ ] No detector version, score, trigger summary, or detector filter is visible in the reviewer.
 - [ ] JSON and CSV exports contain the annotation and preserved detector metadata.
 - [ ] Keyboard focus order and visible focus states work at desktop and narrow widths.
 - [ ] Logs contain useful failures but no database token, password, or Authorization header.

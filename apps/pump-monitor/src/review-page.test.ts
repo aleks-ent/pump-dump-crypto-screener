@@ -14,9 +14,6 @@ function event(
     detectedAt: "2026-07-12T14:32:00.000Z",
     status: "unreviewed",
     marketType: "linear_perp",
-    detectorVersion: "0.4.1",
-    detectorScore: 87,
-    triggerSummary: "price +8.4% · volume 5.1×",
     ...overrides,
   };
 }
@@ -91,21 +88,36 @@ describe("renderReviewPage", () => {
         exchange: "bybit",
         symbol: "FUEL",
         dateFrom: "2026-07-01",
-        detectorVersion: "0.4.1",
       },
     });
 
     expect(html).toContain('<option value="unreviewed" selected>Unreviewed</option>');
     expect(html).toContain(
-      '<option value="detectedAtAsc" selected>Detection time: oldest first</option>',
+      '<option value="detectedAtAsc" selected>Pump time: oldest first</option>',
     );
     expect(html).toContain("status=unreviewed");
     expect(html).toContain("exchange=bybit");
     expect(html).toContain("symbol=FUEL");
     expect(html).toContain("dateFrom=2026-07-01");
-    expect(html).toContain("detectorVersion=0.4.1");
     expect(html).toContain("event=event-101");
     expect(html).toContain("new URLSearchParams(new FormData(form))");
+  });
+
+  it("keeps detector-only metadata out of the reviewer interface", () => {
+    const detectorEvent = {
+      ...event(),
+      detectorVersion: "0.4.1",
+      detectorScore: 87,
+      triggerSummary: "price +8.4% · volume 5.1×",
+    };
+    const html = renderReviewPage({ events: [detectorEvent] });
+
+    expect(html).not.toContain('name="detectorVersion"');
+    expect(html).not.toContain("Detector score");
+    expect(html).not.toContain("0.4.1");
+    expect(html).not.toContain("price +8.4%");
+    expect(html).toContain("2026-07-12 14:32:00 UTC");
+    expect(html).toContain("TradingView fallback");
   });
 
   it("renders a load-more control that retains query state", () => {
@@ -154,7 +166,6 @@ describe("renderReviewPage", () => {
         event({
           id: 'event-\"unsafe',
           symbol: "<script>alert(1)</script>",
-          triggerSummary: '<img src=x onerror="alert(1)">',
         }),
       ],
     });
@@ -163,7 +174,6 @@ describe("renderReviewPage", () => {
     expect(emptyHtml).toContain("No matching events");
     expect(emptyHtml).toContain('data-selection-state="empty"');
     expect(eventHtml).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
-    expect(eventHtml).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
     expect(eventHtml).not.toContain("<script>alert(1)</script>");
   });
 });

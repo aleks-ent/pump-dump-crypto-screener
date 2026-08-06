@@ -133,9 +133,6 @@ function reviewSummary({ pump, annotation, status }: PumpReviewEvent): ReviewEve
     confidence: annotation?.confidence,
     comment: annotation?.comment,
     marketType: pump.instrumentType,
-    detectorVersion: null,
-    detectorScore: pump.peakScore,
-    triggerSummary: `${pump.dominantPhase} · ${pump.durationMinutes}m · ${pump.eventCount} trigger${pump.eventCount === 1 ? "" : "s"}`,
   };
 }
 
@@ -147,7 +144,6 @@ function reviewPageFilters(url: URL): Partial<ReviewFilters> {
     symbol: url.searchParams.get("symbol") ?? "",
     dateFrom: url.searchParams.get("dateFrom") ?? "",
     dateTo: url.searchParams.get("dateTo") ?? "",
-    detectorVersion: "",
     sort: (url.searchParams.get("sort") ?? "detectedAtAsc") as ReviewFilters["sort"],
   };
 }

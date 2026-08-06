@@ -51,7 +51,7 @@ export function renderReviewChart(options: ReviewChartOptions): string {
   const pumpTime = escapeAttribute(detectedAt.display);
   return `<div class="chart-card" data-chart-root data-chart-state="loading" data-event-id="${eventId}" data-detected-at-ms="${options.detectedAtMs}">
           <div class="chart-toolbar">
-            <div><strong>Historical chart</strong><span data-chart-context>2h before · 2h after detection</span></div>
+            <div><strong>Historical chart</strong><span data-chart-context>2h before · 2h after pump time</span></div>
             <div class="timeframe-switch" aria-label="Chart timeframe">
               <button type="button" class="is-active" data-chart-interval="1m" aria-pressed="true">1m</button><button type="button" data-chart-interval="5m" aria-pressed="false">5m</button>
             </div>
@@ -59,7 +59,7 @@ export function renderReviewChart(options: ReviewChartOptions): string {
           <div class="tradingview-tools" data-tradingview-tools>
             <div class="tradingview-context">
               <strong>TradingView fallback</strong>
-              <span>Detected <time datetime="${escapeAttribute(detectedAt.iso)}">${pumpTime}</time></span>
+              <span>Pump time <time datetime="${escapeAttribute(detectedAt.iso)}">${pumpTime}</time></span>
             </div>
             <div class="tradingview-actions">
               <a href="${tradingView1m}" target="_blank" rel="noopener noreferrer" data-tradingview-link data-tradingview-interval="1m">TradingView 1m <span aria-hidden="true">↗</span></a>
@@ -73,7 +73,7 @@ export function renderReviewChart(options: ReviewChartOptions): string {
             <div class="chart-message" data-chart-message role="status" aria-live="polite">
               <span class="spinner" data-chart-spinner aria-hidden="true"></span>
               <strong data-chart-message-title>Loading historical candles…</strong>
-              <span data-chart-message-detail>Preparing the 1 minute view around detection.</span>
+              <span data-chart-message-detail>Preparing the 1 minute view around the pump time.</span>
               <button type="button" data-chart-retry hidden>Retry</button>
             </div>
           </div>
@@ -260,7 +260,7 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
           const markers = svgNode('g', { class: 'chart-markers' });
           const detectionSeconds = detectedAtMs / 1000;
           [
-            [0, 'Detection', true],
+            [0, 'Pump start', true],
             [5 * 60, '+5m', false],
             [10 * 60, '+10m', false],
             [15 * 60, '+15m', false]
@@ -285,7 +285,7 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
           const currentRequest = ++requestNumber;
           if (controller) controller.abort();
           controller = new AbortController();
-          showState('loading', 'Loading historical candles…', 'Preparing the ' + interval + ' view around detection.');
+          showState('loading', 'Loading historical candles…', 'Preparing the ' + interval + ' view around the pump time.');
           buttons.forEach((button) => { button.disabled = true; });
           const params = new URLSearchParams({
             eventId,

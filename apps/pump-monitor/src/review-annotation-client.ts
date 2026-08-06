@@ -86,7 +86,7 @@ export function renderReviewAnnotation(event: ReviewAnnotationEvent | null): str
             <option value="low"${confidence === "low" ? " selected" : ""}>Low</option>
           </select>
           <label class="field-label" for="review-comment">Comment <span>optional</span></label>
-          <textarea id="review-comment" name="comment" rows="4" maxlength="4000" placeholder="What happened? Why was this a good or bad detection?">${escapeHtml(event?.comment ?? "")}</textarea>
+          <textarea id="review-comment" name="comment" rows="4" maxlength="4000" placeholder="What happened during this pump event?">${escapeHtml(event?.comment ?? "")}</textarea>
           <div class="save-actions">
             <button type="submit" class="button-secondary" data-annotation-save>Save</button>
             <button type="button" class="button-primary" data-annotation-save-next>Save &amp; Next</button>
