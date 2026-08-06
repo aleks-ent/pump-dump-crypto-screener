@@ -1,6 +1,11 @@
+import { buildTradingViewChartUrl } from "@screener/pump-detector";
+
 export interface ReviewChartOptions {
   eventId: string;
   detectedAtMs: number;
+  exchange: string;
+  symbol: string;
+  instrumentType?: string | null;
 }
 
 function escapeAttribute(value: string): string {
@@ -12,6 +17,18 @@ function escapeAttribute(value: string): string {
     .replace(/'/g, "&#039;");
 }
 
+function formatDetectedAt(detectedAtMs: number): { iso: string; display: string } {
+  const detectedAt = new Date(detectedAtMs);
+  if (Number.isNaN(detectedAt.getTime())) {
+    return { iso: "", display: "Unknown UTC time" };
+  }
+  const iso = detectedAt.toISOString();
+  return {
+    iso,
+    display: `${iso.slice(0, 19).replace("T", " ")} UTC`,
+  };
+}
+
 /**
  * Markup for the selected event's single, browser-rendered OHLCV chart. The
  * script below progressively enhances this shell, so the event context and
@@ -19,12 +36,37 @@ function escapeAttribute(value: string): string {
  */
 export function renderReviewChart(options: ReviewChartOptions): string {
   const eventId = escapeAttribute(options.eventId);
+  const detectedAt = formatDetectedAt(options.detectedAtMs);
+  const tradingViewOptions = {
+    exchange: options.exchange,
+    symbolNative: options.symbol,
+    instrumentType: options.instrumentType ?? undefined,
+  };
+  const tradingView1m = escapeAttribute(
+    buildTradingViewChartUrl({ ...tradingViewOptions, timeframe: "1m" }),
+  );
+  const tradingView5m = escapeAttribute(
+    buildTradingViewChartUrl({ ...tradingViewOptions, timeframe: "5m" }),
+  );
+  const pumpTime = escapeAttribute(detectedAt.display);
   return `<div class="chart-card" data-chart-root data-chart-state="loading" data-event-id="${eventId}" data-detected-at-ms="${options.detectedAtMs}">
           <div class="chart-toolbar">
             <div><strong>Historical chart</strong><span data-chart-context>2h before · 2h after detection</span></div>
             <div class="timeframe-switch" aria-label="Chart timeframe">
               <button type="button" class="is-active" data-chart-interval="1m" aria-pressed="true">1m</button><button type="button" data-chart-interval="5m" aria-pressed="false">5m</button>
             </div>
+          </div>
+          <div class="tradingview-tools" data-tradingview-tools>
+            <div class="tradingview-context">
+              <strong>TradingView fallback</strong>
+              <span>Detected <time datetime="${escapeAttribute(detectedAt.iso)}">${pumpTime}</time></span>
+            </div>
+            <div class="tradingview-actions">
+              <a href="${tradingView1m}" target="_blank" rel="noopener noreferrer" data-tradingview-link data-tradingview-interval="1m">TradingView 1m <span aria-hidden="true">↗</span></a>
+              <a href="${tradingView5m}" target="_blank" rel="noopener noreferrer" data-tradingview-link data-tradingview-interval="5m">TradingView 5m <span aria-hidden="true">↗</span></a>
+              <button type="button" data-copy-pump-time data-pump-time="${pumpTime}">Copy pump time</button>
+            </div>
+            <span class="tradingview-guidance" data-copy-pump-feedback aria-live="polite">In TradingView, press Alt/Option + G and use this UTC time.</span>
           </div>
           <div class="chart-stage" data-chart-stage role="img" aria-label="Historical OHLCV chart for the selected event">
             <svg data-chart-svg aria-hidden="true"></svg>
@@ -76,6 +118,8 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
         const retry = root.querySelector('[data-chart-retry]');
         const spinner = root.querySelector('[data-chart-spinner]');
         const quality = root.querySelector('[data-chart-quality]');
+        const copyPumpTime = root.querySelector('[data-copy-pump-time]');
+        const copyFeedback = root.querySelector('[data-copy-pump-feedback]');
         const buttons = root.querySelectorAll('[data-chart-interval]');
         const eventId = root.dataset.eventId || '';
         const detectedAtMs = Number(root.dataset.detectedAtMs);
@@ -84,6 +128,23 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
         let requestNumber = 0;
         let controller = null;
         let resizeFrame = 0;
+
+        const writeClipboard = async (value) => {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(value);
+            return;
+          }
+          const textarea = document.createElement('textarea');
+          textarea.value = value;
+          textarea.setAttribute('readonly', '');
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.append(textarea);
+          textarea.select();
+          const copied = document.execCommand('copy');
+          textarea.remove();
+          if (!copied) throw new Error('Clipboard unavailable');
+        };
 
         const showState = (state, heading, description) => {
           root.dataset.chartState = state;
@@ -134,7 +195,7 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
             Number.isFinite(item.low) && Number.isFinite(item.close) && Number.isFinite(item.volume)
           );
           if (items.length === 0) {
-            showState('empty', 'No valid candles in this window', 'The event remains available for annotation. Retry after market data is restored.');
+            showState('empty', 'No valid candles in this window', 'Open the event in TradingView above, or retry after local market data is restored.');
             return;
           }
           const fromSeconds = Number.isFinite(payload.fromMs) ? payload.fromMs / 1000 : detectedAtMs / 1000 - CONTEXT_MS / 1000;
@@ -218,7 +279,7 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
 
         const load = async () => {
           if (!eventId || !Number.isFinite(detectedAtMs)) {
-            showState('error', 'Chart configuration is unavailable', 'The selected event can still be annotated.');
+            showState('error', 'Chart configuration is unavailable', 'Open the event in TradingView above. Annotation controls remain available.');
             return;
           }
           const currentRequest = ++requestNumber;
@@ -243,14 +304,15 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
             if (currentRequest !== requestNumber) return;
             payload = body;
             if (!Array.isArray(body.items) || body.items.length === 0) {
-              showState('empty', 'No historical candles found', 'There is no market data in the ±2 hour window. The event can still be annotated.');
+              showState('empty', 'No historical candles found', 'Use the TradingView links above to review this event without local candle history.');
               return;
             }
             render();
           } catch (error) {
             if (error && error.name === 'AbortError') return;
             if (currentRequest !== requestNumber) return;
-            showState('error', 'Could not load historical candles', error instanceof Error ? error.message : 'Try the request again.');
+            const reason = error instanceof Error ? error.message : 'Try the request again.';
+            showState('error', 'Could not load historical candles', reason + ' Use TradingView above or retry.');
           } finally {
             if (currentRequest === requestNumber) buttons.forEach((button) => { button.disabled = false; });
           }
@@ -268,6 +330,16 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
             });
             load();
           });
+        });
+        copyPumpTime?.addEventListener('click', async () => {
+          const pumpTime = copyPumpTime.dataset.pumpTime || '';
+          if (!pumpTime) return;
+          try {
+            await writeClipboard(pumpTime);
+            if (copyFeedback) copyFeedback.textContent = 'Pump time copied. In TradingView, press Alt/Option + G and paste it.';
+          } catch {
+            if (copyFeedback) copyFeedback.textContent = 'Could not copy automatically. Select the detected UTC time shown here.';
+          }
         });
         retry.addEventListener('click', load);
         if ('ResizeObserver' in window) {

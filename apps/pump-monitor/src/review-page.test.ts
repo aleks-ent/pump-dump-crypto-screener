@@ -13,7 +13,7 @@ function event(
     exchange: "bybit",
     detectedAt: "2026-07-12T14:32:00.000Z",
     status: "unreviewed",
-    marketType: "Linear perpetual",
+    marketType: "linear_perp",
     detectorVersion: "0.4.1",
     detectorScore: 87,
     triggerSummary: "price +8.4% · volume 5.1×",
@@ -46,7 +46,12 @@ describe("renderReviewPage", () => {
     expect(html).toContain('aria-current="true"');
     expect(html).toContain("FUELUSDT");
     expect(html).toContain("2026-07-12 14:32:00 UTC");
-    expect(html).toContain("Linear perpetual");
+    expect(html).toContain("linear_perp");
+    expect(html).toContain("TradingView fallback");
+    expect(html).toContain("TradingView 1m");
+    expect(html).toContain("TradingView 5m");
+    expect(html).toContain("BYBIT%3AFUELUSDT.P");
+    expect(html).toContain("Copy pump time");
     expect(html).toContain("213</strong> / 684 reviewed");
     expect(html).toContain("31%");
     expect(html).toContain("Historical chart");
