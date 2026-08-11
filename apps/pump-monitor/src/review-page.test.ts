@@ -94,7 +94,7 @@ describe("renderReviewPage", () => {
 
     expect(html).toContain('<option value="unreviewed" selected>Unreviewed</option>');
     expect(html).toContain(
-      '<option value="detectedAtAsc" selected>Pump time: oldest first</option>',
+      '<option value="detectedAtDesc" selected>Pump time: newest first</option>',
     );
     expect(html).toContain("status=unreviewed");
     expect(html).toContain("exchange=bybit");

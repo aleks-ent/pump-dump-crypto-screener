@@ -121,7 +121,7 @@ function requireNonEmpty(value: string, field: string): string {
 }
 
 function parseInterval(value: string | undefined): Timeframe {
-  const interval = value ?? "1m";
+  const interval = value ?? "5m";
   if (interval !== "1m" && interval !== "5m") {
     throw new ReviewCandleError(
       "INVALID_INTERVAL",

@@ -151,7 +151,7 @@ function reviewPageFilters(url: URL): Partial<ReviewFilters> {
     symbol: url.searchParams.get("symbol") ?? "",
     dateFrom: url.searchParams.get("dateFrom") ?? "",
     dateTo: url.searchParams.get("dateTo") ?? "",
-    sort: (url.searchParams.get("sort") ?? "detectedAtAsc") as ReviewFilters["sort"],
+    sort: (url.searchParams.get("sort") ?? "detectedAtDesc") as ReviewFilters["sort"],
   };
 }
 

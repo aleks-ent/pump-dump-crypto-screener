@@ -360,7 +360,7 @@ Default view:
 
 ```text
 Status: Unreviewed
-Sort: Detection time ascending
+Sort: Detection time descending
 ```
 
 The application should preserve filters in the URL query string where practical.
@@ -368,7 +368,7 @@ The application should preserve filters in the URL query string where practical.
 Example:
 
 ```text
-/review?status=unreviewed&exchange=bybit&sort=detectedAtAsc
+/review?status=unreviewed&exchange=bybit&sort=detectedAtDesc
 ```
 
 ---
@@ -440,7 +440,7 @@ The chart must:
 
 - Open the correct symbol.
 - Open around the historical detection timestamp.
-- Default to a one-minute timeframe.
+- Default to a five-minute timeframe because it has substantially better local coverage.
 - Allow switching between one-minute and five-minute timeframes.
 - Display sufficient pre-event and post-event context.
 - Clearly mark the screener detection timestamp.
@@ -796,7 +796,7 @@ pageSize
 Example:
 
 ```http
-GET /api/pump-events?status=unreviewed&sort=detectedAtAsc&page=1&pageSize=50
+GET /api/pump-events?status=unreviewed&sort=detectedAtDesc&page=1&pageSize=50
 ```
 
 Suggested response:

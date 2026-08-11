@@ -107,7 +107,7 @@ export function parsePumpEventFilters(params: URLSearchParams): PumpEventFilters
     throw new ReviewHttpError(400, "invalid_query", "Unsupported pump category");
   }
 
-  const sortRaw = params.get("sort") ?? "detectedAtAsc";
+  const sortRaw = params.get("sort") ?? "detectedAtDesc";
   if (!EVENT_SORTS.has(sortRaw as PumpReviewSort)) {
     throw new ReviewHttpError(400, "invalid_query", "Unsupported event sort");
   }
