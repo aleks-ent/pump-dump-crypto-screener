@@ -123,7 +123,7 @@ const DEFAULT_FILTERS: ReviewFilters = {
   symbol: "",
   dateFrom: "",
   dateTo: "",
-  sort: "detectedAtAsc",
+  sort: "detectedAtDesc",
 };
 
 const DEFAULT_PAGINATION: ReviewPagination = {
@@ -288,7 +288,7 @@ function renderListState(
     return `<div class="list-message" data-list-state="empty">
       <strong>No matching events</strong>
       <span>Adjust the filters or clear them to see more pump events.</span>
-      <a href="/review?status=unreviewed&amp;sort=detectedAtAsc">Reset filters</a>
+      <a href="/review?status=unreviewed&amp;sort=detectedAtDesc">Reset filters</a>
     </div>`;
   }
   return events

@@ -121,6 +121,15 @@ async function request(repository: ReviewRepositoryLike, path: string, init?: Re
 }
 
 describe("pump review API", () => {
+  it("defaults to unreviewed events with the latest pumps first", () => {
+    expect(parsePumpEventFilters(new URLSearchParams())).toMatchObject({
+      status: "unreviewed",
+      sort: "detectedAtDesc",
+      page: 1,
+      pageSize: 50,
+    });
+  });
+
   it("parses bounded filters and date-only end dates", () => {
     const filters = parsePumpEventFilters(
       new URLSearchParams(
