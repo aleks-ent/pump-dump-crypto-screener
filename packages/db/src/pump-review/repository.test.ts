@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { PumpEpisode } from "@screener/pump-detector";
 import { createMemoryDbClient } from "../client.js";
 import { PumpRepository } from "../pumps/repository.js";
+import { TelegramEpisodeVotingRepository } from "../telegram-episode-voting/repository.js";
+import { TelegramSubscriberRepository } from "../telegram-subscribers/repository.js";
 import { PumpReviewRepository } from "./repository.js";
 import {
   ANNOTATION_CONFIDENCES,
@@ -56,6 +58,8 @@ describe("pump review types", () => {
 describe("PumpReviewRepository", () => {
   let pumpRepo: PumpRepository;
   let reviewRepo: PumpReviewRepository;
+  let subscriberRepo: TelegramSubscriberRepository;
+  let votingRepo: TelegramEpisodeVotingRepository;
   let eventIds: string[];
 
   beforeEach(async () => {
@@ -63,6 +67,8 @@ describe("PumpReviewRepository", () => {
     pumpRepo = new PumpRepository(client);
     await pumpRepo.applySchema();
     reviewRepo = new PumpReviewRepository(client);
+    subscriberRepo = new TelegramSubscriberRepository(client);
+    votingRepo = new TelegramEpisodeVotingRepository(client);
 
     const { newPumps } = await pumpRepo.upsertPumpEpisodes([
       sampleEpisode("AAA/USDT", Date.parse("2026-07-01T10:00:00.000Z")),
@@ -111,8 +117,33 @@ describe("PumpReviewRepository", () => {
       }),
       annotation: saved,
       status: "reviewed",
+      telegramVotes: { pump: 0, dump: 0, none: 0 },
     });
     expect(await pumpRepo.getClassification(eventIds[0]!)).toBeNull();
+  });
+
+  it("includes aggregate Telegram subscriber votes for each review event", async () => {
+    await subscriberRepo.subscribe("111", "2026-08-01T09:00:00.000Z");
+    await subscriberRepo.subscribe("222", "2026-08-01T09:01:00.000Z");
+    await subscriberRepo.subscribe("333", "2026-08-01T09:02:00.000Z");
+    await votingRepo.upsertVote(eventIds[0]!, "111", "pump");
+    await votingRepo.upsertVote(eventIds[0]!, "222", "pump");
+    await votingRepo.upsertVote(eventIds[0]!, "333", "none");
+    await votingRepo.upsertVote(eventIds[1]!, "111", "dump");
+
+    expect((await reviewRepo.getReviewEvent(eventIds[0]!))?.telegramVotes).toEqual({
+      pump: 2,
+      dump: 0,
+      none: 1,
+    });
+
+    const listed = await reviewRepo.listReviewEvents({ sort: "detectedAtAsc" });
+    expect(listed.items.map((event) => event.telegramVotes)).toEqual([
+      { pump: 2, dump: 0, none: 1 },
+      { pump: 0, dump: 1, none: 0 },
+      { pump: 0, dump: 0, none: 0 },
+      { pump: 0, dump: 0, none: 0 },
+    ]);
   });
 
   it("updates one annotation per event and source while preserving identity and creation time", async () => {

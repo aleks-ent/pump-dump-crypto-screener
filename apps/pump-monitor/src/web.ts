@@ -129,7 +129,12 @@ function classificationText(pump: StoredPump): string {
   }
 }
 
-function reviewSummary({ pump, annotation, status }: PumpReviewEvent): ReviewEventSummary {
+function reviewSummary({
+  pump,
+  annotation,
+  status,
+  telegramVotes,
+}: PumpReviewEvent): ReviewEventSummary {
   return {
     id: pump.index,
     symbol: pump.symbolNative,
@@ -140,6 +145,7 @@ function reviewSummary({ pump, annotation, status }: PumpReviewEvent): ReviewEve
     confidence: annotation?.confidence,
     comment: annotation?.comment,
     marketType: pump.instrumentType,
+    telegramVotes,
   };
 }
 

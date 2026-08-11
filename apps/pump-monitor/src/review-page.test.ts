@@ -14,6 +14,7 @@ function event(
     detectedAt: "2026-07-12T14:32:00.000Z",
     status: "unreviewed",
     marketType: "linear_perp",
+    telegramVotes: { pump: 0, dump: 0, none: 0 },
     ...overrides,
   };
 }
@@ -59,6 +60,28 @@ describe("renderReviewPage", () => {
     expect(html).toContain("review:annotation-save-request");
     expect(html).toContain("beforeunload");
     expect(html).toContain("@media (max-width:1050px)");
+  });
+
+  it("shows Telegram crowd votes in the event list and selected-event context", () => {
+    const html = renderReviewPage({
+      events: [event({ telegramVotes: { pump: 4, dump: 1, none: 2 } })],
+    });
+
+    expect(html).toContain('data-telegram-votes');
+    expect(html).toContain('title="7 Telegram subscriber votes"');
+    expect(html).toContain("Telegram crowd");
+    expect(html).toContain("Subscriber votes");
+    expect(html).toContain('<div class="telegram-vote-pump"><dt>Pump</dt><dd>4</dd>');
+    expect(html).toContain('<div class="telegram-vote-dump"><dt>Dump</dt><dd>1</dd>');
+    expect(html).toContain('<div class="telegram-vote-none"><dt>Neither</dt><dd>2</dd>');
+  });
+
+  it("renders an explicit empty Telegram vote state", () => {
+    const html = renderReviewPage({ events: [event()] });
+
+    expect(html).toContain("0 votes");
+    expect(html).toContain("No Telegram subscribers have voted on this event yet.");
+    expect(html).not.toContain('class="telegram-vote-total"');
   });
 
   it("enables editing for the selected event's existing annotation", () => {
