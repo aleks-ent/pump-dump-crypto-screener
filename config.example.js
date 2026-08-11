@@ -6,7 +6,7 @@ export default {
   // Private chat that is always subscribed and syncs its vote to the legacy classification field.
   classifierTelegramChatId: "",
   fetch: {
-    intervals: ["5m"],
+    intervals: ["1m", "5m"],
   },
   database: {
     url: "",
@@ -15,6 +15,13 @@ export default {
   web: {
     port: 3000,
     host: "127.0.0.1",
+    // Optional for loopback. Required before binding to a non-loopback host.
+    // Prefer PUMP_REVIEW_AUTH_USERNAME / PUMP_REVIEW_AUTH_PASSWORD in production.
+    reviewAuth: {
+      username: "",
+      password: "",
+      realm: "Pump Event Review",
+    },
   },
   pump: {
     days: 5,

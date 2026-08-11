@@ -6,9 +6,26 @@ import {
   createDbClient,
   loadDatabaseConfig,
   PumpRepository,
+  PumpReviewRepository,
+  type PumpReviewEvent,
   type StoredPump,
 } from "@screener/db";
 import { resolveRepoPath } from "@screener/core";
+import { handleReviewApiRequest, parsePumpEventFilters } from "./review-api.js";
+import { handleReviewCandleApiRequest } from "./review-candle-api.js";
+import { handleReviewExportRequest } from "./review-export.js";
+import {
+  assertSafeReviewExposure,
+  authorizeReviewRoute,
+  resolveReviewAuthConfig,
+  type ReviewAuthConfig,
+  type ReviewAuthConfigInput,
+} from "./review-auth.js";
+import {
+  renderReviewPage,
+  type ReviewEventSummary,
+  type ReviewFilters,
+} from "./review-page.js";
 
 const DEFAULT_WEB_PORT = 3000;
 const DEFAULT_WEB_HOST = "127.0.0.1";
@@ -22,12 +39,14 @@ interface WebCliOptions {
 interface WebConfig {
   port: number;
   host: string;
+  reviewAuth?: ReviewAuthConfigInput;
 }
 
 interface ConfigFile {
   web?: {
     port?: string | number;
     host?: string;
+    reviewAuth?: ReviewAuthConfigInput;
   };
 }
 
@@ -67,7 +86,7 @@ async function loadWebConfig(opts: WebCliOptions): Promise<WebConfig> {
     process.env.HOST?.trim() ||
     cfg.web?.host?.trim() ||
     DEFAULT_WEB_HOST;
-  return { port, host };
+  return { port, host, reviewAuth: cfg.web?.reviewAuth };
 }
 
 function fmtUtc(ms: number): string {
@@ -100,6 +119,70 @@ function classificationText(pump: StoredPump): string {
       return "None";
     default:
       return "Unclassified";
+  }
+}
+
+function reviewSummary({ pump, annotation, status }: PumpReviewEvent): ReviewEventSummary {
+  return {
+    id: pump.index,
+    symbol: pump.symbolNative,
+    exchange: pump.leadingExchange,
+    detectedAt: pump.startUtc,
+    status,
+    category: annotation?.category,
+    confidence: annotation?.confidence,
+    comment: annotation?.comment,
+    marketType: pump.instrumentType,
+  };
+}
+
+function reviewPageFilters(url: URL): Partial<ReviewFilters> {
+  return {
+    status: (url.searchParams.get("status") ?? "unreviewed") as ReviewFilters["status"],
+    category: (url.searchParams.get("category") ?? "all") as ReviewFilters["category"],
+    exchange: url.searchParams.get("exchange") ?? "",
+    symbol: url.searchParams.get("symbol") ?? "",
+    dateFrom: url.searchParams.get("dateFrom") ?? "",
+    dateTo: url.searchParams.get("dateTo") ?? "",
+    sort: (url.searchParams.get("sort") ?? "detectedAtAsc") as ReviewFilters["sort"],
+  };
+}
+
+async function renderReviewWorkspace(
+  url: URL,
+  reviewRepo: PumpReviewRepository,
+): Promise<string> {
+  try {
+    const filters = parsePumpEventFilters(url.searchParams);
+    const [result, progress] = await Promise.all([
+      reviewRepo.listReviewEvents(filters),
+      reviewRepo.getReviewStats(),
+    ]);
+    const events = result.items.map(reviewSummary);
+    const selectedEventId = url.searchParams.get("event");
+    if (selectedEventId && !events.some((event) => event.id === selectedEventId)) {
+      const selected = await reviewRepo.getReviewEvent(selectedEventId);
+      if (selected) events.unshift(reviewSummary(selected));
+    }
+    return renderReviewPage({
+      events,
+      selectedEventId,
+      filters: reviewPageFilters(url),
+      progress,
+      pagination: {
+        page: result.page,
+        pageSize: result.pageSize,
+        loadedCount: events.length,
+        hasMore: result.page * result.pageSize < result.total,
+      },
+      listState: "ready",
+    });
+  } catch (error) {
+    return renderReviewPage({
+      filters: reviewPageFilters(url),
+      listState: "error",
+      errorMessage: error instanceof Error ? error.message : "Could not load review events",
+    });
   }
 }
 
@@ -200,13 +283,26 @@ async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
   repo: PumpRepository,
+  reviewRepo: PumpReviewRepository,
+  reviewAuth: ReviewAuthConfig,
 ): Promise<void> {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  if (!authorizeReviewRoute(req, res, reviewAuth)) return;
+  if (url.pathname === "/api/market-data/candles") {
+    if (await handleReviewCandleApiRequest(req, res, reviewRepo)) return;
+  }
+  if (url.pathname === "/api/pump-events/export") {
+    if (await handleReviewExportRequest(req, res, reviewRepo)) return;
+  }
+  if (url.pathname.startsWith("/api/pump-events")) {
+    if (await handleReviewApiRequest(req, res, reviewRepo)) return;
+  }
+
   if (req.method !== "GET" && req.method !== "HEAD") {
     send(res, 405, "Method not allowed\n", "text/plain; charset=utf-8");
     return;
   }
 
-  const url = new URL(req.url ?? "/", "http://localhost");
   const headOnly = req.method === "HEAD";
   if (url.pathname === "/healthz") {
     send(res, 200, "ok\n", "text/plain; charset=utf-8", headOnly);
@@ -214,6 +310,16 @@ async function handleRequest(
   }
   if (url.pathname === "/favicon.ico") {
     send(res, 204, "", "text/plain; charset=utf-8", headOnly);
+    return;
+  }
+  if (url.pathname === "/review") {
+    send(
+      res,
+      200,
+      await renderReviewWorkspace(url, reviewRepo),
+      "text/html; charset=utf-8",
+      headOnly,
+    );
     return;
   }
   if (url.pathname !== "/" && url.pathname !== "/pumps") {
@@ -241,10 +347,13 @@ export async function createPumpWebServer(
   const dbConfig = await loadDatabaseConfig();
   const client = createDbClient(dbConfig);
   const repo = new PumpRepository(client);
+  const reviewRepo = new PumpReviewRepository(client);
+  const reviewAuth = resolveReviewAuthConfig(config.reviewAuth);
+  assertSafeReviewExposure(config.host, reviewAuth);
   await repo.applySchema();
 
   const server = createServer((req, res) => {
-    void handleRequest(req, res, repo).catch((error: unknown) => {
+    void handleRequest(req, res, repo, reviewRepo, reviewAuth).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       log(`Web request failed: ${message}`);
       if (!res.headersSent) {

@@ -81,6 +81,11 @@ PM2 keeps all processes alive. When `pump-monitor` finishes a pipeline run it ex
 
 The web page is served by `pump-web` on `127.0.0.1:3000` by default. Put nginx in front of it for public HTTP/HTTPS; see [docs/nginx_letsencrypt.md](docs/nginx_letsencrypt.md).
 
+The manual pump-event reviewer is available at `/review`. It uses the existing Turso
+database plus local 1m/5m market data and can optionally require HTTP Basic auth.
+See the [pump review operator guide](docs/pump-event-review/implementation.md) for
+schema setup, market-data requirements, access control, deployment, and release checks.
+
 Persist PM2 across reboots:
 
 ```bash
@@ -118,7 +123,7 @@ Each PM2-driven run is an end-to-end pipeline:
 2. **Scan** — pump/dump detection; output `data/market_stats/reports/pump_events.ndjson`.
 3. **Persist + alert** — upsert pump episodes to Turso; Telegram message per **new** pump (`coin|pump_start_utc`).
 
-On disk: `data/market_stats/` (`archives/`, `api_fallback/raw/`, `reports/`). Cached series are skipped on repeat runs.
+On disk: `data/market_stats/` (`archives/`, `api_fallback/raw/`, `reports/`). Cached series are skipped on repeat runs. Nothing is ever pruned automatically — see [Disk usage and retention](#disk-usage-and-retention).
 
 Alerts sent to `classifierTelegramChatId` have **Pump | Dump | None** buttons. `pump-bot` verifies the callback came from that chat before writing `pumps.classification`; other subscribers receive the same alerts without classification buttons.
 
@@ -144,6 +149,39 @@ Per-coin results under `data/market_stats/reports/scan_cache/` (override with `-
 Disable cache: set `pump.scanCache: false` in `config.js`, or delete `scan_cache/`, then `pm2 restart pump-monitor`.
 
 Scanning uses a **worker thread pool** (auto-detected CPU cores). Production scan step uses compiled `dist/cli.js` with native worker threads (required on Linux/VDS).
+
+### Disk usage and retention
+
+Nothing in the pipeline deletes anything — every run only appends. On a long-lived VDS `data/market_stats/` grows without bound (100 GB+ over a couple of months is normal).
+
+| Path | What it holds | Grows with | Read back? |
+|------|---------------|------------|------------|
+| `archives/` | Binance bulk archive downloads, `symbol=X/date=YYYY-MM-DD` | days × symbols | yes |
+| `api_fallback/raw/` | REST fallback candles, `date=YYYY-MM-DD/symbol=X` | days × symbols | yes |
+| `extracted/` | archives unpacked to NDJSON, `date=YYYY-MM-DD/symbol=X` | days × symbols | yes — derived, regenerable from `archives/` |
+| `reports/pump_detector/<runId>/` | orchestrator log + two files per coin | **every run** (~50 MB each) | no |
+| `reports/scan_cache/` | per-coin scan results | symbol count only (~6 MB) | yes |
+
+`reports/pump_detector/` is usually the bulk of it. A fresh run directory is created on every scan, and PM2 restarts `pump-monitor` the moment it exits, so this is several GB/day of debug output that no code path reads.
+
+Scanning itself only needs `pump.days` of candles. Longer retention exists for the `/review` UI, which reads `archives/`, `api_fallback/`, and `extracted/` to draw charts for past episodes — below the retention horizon those charts fall back to TradingView, while the stored pump rows in Turso are unaffected.
+
+[`scripts/prune-market-data.sh`](scripts/prune-market-data.sh) prunes both by age. It is dry-run by default:
+
+```bash
+./scripts/prune-market-data.sh            # preview: matched directories and size
+./scripts/prune-market-data.sh --apply    # delete
+```
+
+Defaults keep 60 days of candles and 2 days of run directories; override with `RETAIN_DAYS`, `RUN_RETAIN_DAYS`, `DATA_DIR`. Safe to run while `pump-monitor` is live — the run-directory floor keeps the in-flight run, and the pipeline only writes today's date partitions.
+
+Keep it from coming back with a daily cron:
+
+```bash
+(crontab -l 2>/dev/null; echo "17 4 * * * cd /path/to/repo && ./scripts/prune-market-data.sh --apply >> /tmp/prune-market-data.log 2>&1") | crontab -
+```
+
+PM2's own logs accumulate separately from `data/`. Check with `du -sh ~/.pm2/logs`; `pm2 flush` clears them and `pm2 install pm2-logrotate` prevents recurrence.
 
 ### One-off CLI flags
 
@@ -178,6 +216,7 @@ Useful flags: `--days`, `--exchanges`, `--quote-currencies`, `--discover`, `--js
 
 - `ecosystem.config.cjs` — PM2 process definitions (`pump-monitor`, `pump-bot`, `pump-web`)
 - `config.js` — Turso, Telegram bot token, `pump.*`, `fetch.intervals` (copy from `config.example.js`)
+- `scripts/prune-market-data.sh` — age-based cleanup for `data/market_stats/`
 - `packages/core` — HTTP client, config, pull window
 - `packages/exchanges` — exchange adapters
 - `packages/storage` — NDJSON, gaps, manifest I/O
