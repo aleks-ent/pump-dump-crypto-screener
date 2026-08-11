@@ -62,7 +62,7 @@ async function request(path: string, loader: ReviewCandleWindowLoader, method = 
 
 describe("review candle API", () => {
   it("loads the selected event with default context", async () => {
-    const loader = vi.fn(() => ({ items: [{ time: 1 }], interval: "5m" })) as unknown as ReviewCandleWindowLoader;
+    const loader = vi.fn(async () => ({ items: [{ time: 1 }], interval: "5m" })) as unknown as ReviewCandleWindowLoader;
     const id = encodeURIComponent(pump().index);
     const response = await request(`/api/market-data/candles?eventId=${id}`, loader);
     expect(response.status).toBe(200);

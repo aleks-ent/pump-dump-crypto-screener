@@ -1,8 +1,8 @@
 # Pump Event Review: Operator Guide
 
 This guide covers the production setup and release checks for the internal pump-event
-reviewer. The reviewer uses the screener's existing Turso database and locally stored
-Binance/Bybit candle history.
+reviewer. The reviewer uses the screener's existing Turso database and loads chart
+candles from local history or the public Binance/Bybit market-data APIs.
 
 ## Setup
 
@@ -47,9 +47,12 @@ created, and the same annotation can be edited without producing a duplicate row
 
 ## Historical market data
 
-Charts read local files under `data/market_stats/`; they do not retrieve historical
-candles during a review request. The event's exchange, native symbol, instrument type,
-and timestamp must fall within the locally retained window.
+Charts first read local files under `data/market_stats/`. When that four-hour event
+window is incomplete, the Node web server requests the missing window from the event's
+public Binance or Bybit kline endpoint. The browser calls only
+`/api/market-data/candles`; it never contacts an exchange directly. Exchange responses
+are normalized and returned without being persisted, so chart availability is not
+limited by local retention and review requests do not grow the on-disk cache.
 
 For both chart timeframes, configure:
 
@@ -59,8 +62,9 @@ fetch: {
 },
 ```
 
-The reviewer opens the 5m chart by default because local 5m coverage is normally much
-more complete. The 1m option remains available for events with retained 1m candles.
+The reviewer opens the 5m chart by default and requests two hours before and after the
+pump timestamp. The 1m option requests the same window. Both views support wheel zoom,
+drag-to-pan, crosshair OHLCV inspection, and double-click reset.
 
 The normal `pnpm pump:monitor` pipeline refreshes the configured lookback before it
 scans. To prepare or repair the local history independently, use `pnpm fetch:all` and
@@ -73,14 +77,9 @@ or restarting:
 - `data/market_stats/reports/instrument_index.json`
 - `data/market_stats/reports/symbol_universe.json`
 
-Missing data should produce an explicit chart state; it must not prevent the reviewer
-from assigning or updating a label. Every selected event also provides TradingView 1m
-and 5m links derived from the stored exchange, native symbol, and instrument type. If
-local candles are unavailable, use either link, set the TradingView chart timezone to
-UTC, and press `Alt+G` (`Option+G` on macOS) to open **Go to date**. TradingView uses
-separate inputs, so use **Copy date** for the `YYYY-MM-DD` field and **Copy time** for
-the `HH:mm` field. TradingView availability and intraday history depth still depend on
-the symbol and the reviewer's TradingView plan.
+If both the exchange and local history are unavailable, the reviewer shows an explicit
+chart error without blocking annotation. TradingView links remain as a secondary
+fallback, but normal review does not require copying a timestamp into TradingView.
 
 The reviewer UI intentionally omits detector version, detector score, trigger summary,
 and detector-specific filters. Those values remain untouched in the source event data

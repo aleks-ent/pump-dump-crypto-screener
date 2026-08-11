@@ -106,6 +106,9 @@ importers:
       '@screener/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@screener/exchanges':
+        specifier: workspace:*
+        version: link:../../packages/exchanges
       '@screener/pump-detector':
         specifier: workspace:*
         version: link:../../packages/pump-detector

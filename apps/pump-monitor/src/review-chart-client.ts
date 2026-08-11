@@ -78,8 +78,9 @@ export function renderReviewChart(options: ReviewChartOptions): string {
             </div>
             <span class="tradingview-guidance" data-copy-pump-feedback aria-live="polite">Set the TradingView chart timezone to UTC. Press Alt/Option + G, then paste the date and time separately.</span>
           </div>
-          <div class="chart-stage" data-chart-stage role="img" aria-label="Historical OHLCV chart for the selected event">
+          <div class="chart-stage" data-chart-stage role="img" tabindex="0" aria-label="Interactive historical OHLCV chart for the selected event">
             <svg data-chart-svg aria-hidden="true"></svg>
+            <div class="chart-tooltip" data-chart-tooltip hidden></div>
             <div class="chart-message" data-chart-message role="status" aria-live="polite">
               <span class="spinner" data-chart-spinner aria-hidden="true"></span>
               <strong data-chart-message-title>Loading historical candles…</strong>
@@ -89,6 +90,7 @@ export function renderReviewChart(options: ReviewChartOptions): string {
           </div>
           <footer class="chart-footer">
             <span data-chart-legend><i class="legend-up"></i> Up <i class="legend-down"></i> Down <i class="legend-volume"></i> Volume</span>
+            <span class="chart-interaction-hint">Scroll to zoom · drag to pan · double-click to reset</span>
             <span data-chart-quality aria-live="polite"></span>
           </footer>
         </div>`;
@@ -128,6 +130,7 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
         const retry = root.querySelector('[data-chart-retry]');
         const spinner = root.querySelector('[data-chart-spinner]');
         const quality = root.querySelector('[data-chart-quality]');
+        const tooltip = root.querySelector('[data-chart-tooltip]');
         const copyTradingViewValues = root.querySelectorAll('[data-copy-tradingview-value]');
         const copyFeedback = root.querySelector('[data-copy-pump-feedback]');
         const buttons = root.querySelectorAll('[data-chart-interval]');
@@ -138,6 +141,10 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
         let requestNumber = 0;
         let controller = null;
         let resizeFrame = 0;
+        let viewFromSeconds = null;
+        let viewToSeconds = null;
+        let chartGeometry = null;
+        let drag = null;
 
         const writeClipboard = async (value) => {
           if (navigator.clipboard && window.isSecureContext) {
@@ -166,6 +173,7 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
           if (state !== 'ready') {
             svg.replaceChildren();
             quality.textContent = '';
+            tooltip.hidden = true;
           }
         };
 
@@ -205,14 +213,23 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
             Number.isFinite(item.low) && Number.isFinite(item.close) && Number.isFinite(item.volume)
           );
           if (items.length === 0) {
-            showState('empty', 'No valid candles in this window', 'Open the event in TradingView above, or retry after local market data is restored.');
+            showState('empty', 'No valid candles in this window', 'The exchange and local market data did not return usable candles.');
             return;
           }
-          const fromSeconds = Number.isFinite(payload.fromMs) ? payload.fromMs / 1000 : detectedAtMs / 1000 - CONTEXT_MS / 1000;
-          const toSeconds = Number.isFinite(payload.toMs) ? payload.toMs / 1000 : detectedAtMs / 1000 + CONTEXT_MS / 1000;
+          const dataFromSeconds = Number.isFinite(payload.fromMs) ? payload.fromMs / 1000 : detectedAtMs / 1000 - CONTEXT_MS / 1000;
+          const dataToSeconds = Number.isFinite(payload.toMs) ? payload.toMs / 1000 : detectedAtMs / 1000 + CONTEXT_MS / 1000;
+          if (!Number.isFinite(viewFromSeconds) || !Number.isFinite(viewToSeconds) || viewFromSeconds >= viewToSeconds) {
+            viewFromSeconds = dataFromSeconds;
+            viewToSeconds = dataToSeconds;
+          }
+          const fromSeconds = viewFromSeconds;
+          const toSeconds = viewToSeconds;
           const timeSpan = Math.max(1, toSeconds - fromSeconds);
-          const lows = items.map((item) => item.low);
-          const highs = items.map((item) => item.high);
+          const intervalSeconds = interval === '5m' ? 300 : 60;
+          const visibleItems = items.filter((item) => item.time >= fromSeconds - intervalSeconds && item.time <= toSeconds + intervalSeconds);
+          if (visibleItems.length === 0) return;
+          const lows = visibleItems.map((item) => item.low);
+          const highs = visibleItems.map((item) => item.high);
           let priceMin = Math.min(...lows);
           let priceMax = Math.max(...highs);
           const rawRange = priceMax - priceMin;
@@ -220,11 +237,11 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
           priceMin -= pricePad;
           priceMax += pricePad;
           const priceRange = Math.max(Number.EPSILON, priceMax - priceMin);
-          const maxVolume = Math.max(1, ...items.map((item) => Math.max(0, item.volume)));
+          const maxVolume = Math.max(1, ...visibleItems.map((item) => Math.max(0, item.volume)));
           const x = (time) => plotLeft + ((time - fromSeconds) / timeSpan) * plotWidth;
           const y = (price) => priceTop + ((priceMax - price) / priceRange) * (priceBottom - priceTop);
-          const intervalSeconds = interval === '5m' ? 300 : 60;
           const candleWidth = Math.max(1.5, Math.min(12, (plotWidth * intervalSeconds / timeSpan) * 0.72));
+          chartGeometry = { plotLeft, plotRight, plotWidth, priceTop, volumeBottom, fromSeconds, toSeconds, dataFromSeconds, dataToSeconds, items, priceRange };
 
           svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
           svg.replaceChildren();
@@ -246,7 +263,7 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
           svg.append(grid);
 
           const bars = svgNode('g', { class: 'chart-bars' });
-          items.forEach((item) => {
+          visibleItems.forEach((item) => {
             const center = x(item.time);
             if (center < plotLeft - candleWidth || center > plotRight + candleWidth) return;
             const rising = item.close >= item.open;
@@ -282,10 +299,97 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
 
           const loaded = payload.quality && Number.isFinite(payload.quality.loadedBars) ? payload.quality.loadedBars : items.length;
           const coverage = payload.quality && Number.isFinite(payload.quality.coveragePct) ? Math.round(payload.quality.coveragePct) : null;
-          quality.textContent = loaded + ' candles' + (coverage == null ? '' : ' · ' + coverage + '% coverage') + ' · UTC';
+          const exchangeBars = payload.source && Number.isFinite(payload.source.exchangeApiBars) ? payload.source.exchangeApiBars : 0;
+          const source = exchangeBars > 0 ? 'exchange API' : 'local history';
+          quality.textContent = loaded + ' candles' + (coverage == null ? '' : ' · ' + coverage + '% coverage') + ' · ' + source + ' · UTC';
           root.dataset.chartState = 'ready';
           message.hidden = true;
         };
+
+        const stageX = (event) => event.clientX - stage.getBoundingClientRect().left;
+
+        const clampView = (from, to, dataFrom, dataTo) => {
+          const span = to - from;
+          if (from < dataFrom) return [dataFrom, dataFrom + span];
+          if (to > dataTo) return [dataTo - span, dataTo];
+          return [from, to];
+        };
+
+        const hideCrosshair = () => {
+          svg.querySelector('[data-chart-crosshair]')?.remove();
+          tooltip.hidden = true;
+        };
+
+        const showCrosshair = (event) => {
+          if (!chartGeometry || !payload || drag) return;
+          const pointerX = Math.max(chartGeometry.plotLeft, Math.min(stageX(event), chartGeometry.plotRight));
+          const pointerTime = chartGeometry.fromSeconds + ((pointerX - chartGeometry.plotLeft) / chartGeometry.plotWidth) * (chartGeometry.toSeconds - chartGeometry.fromSeconds);
+          const candle = chartGeometry.items.reduce((nearest, item) =>
+            nearest == null || Math.abs(item.time - pointerTime) < Math.abs(nearest.time - pointerTime) ? item : nearest
+          , null);
+          if (!candle) return;
+          const candleX = chartGeometry.plotLeft + ((candle.time - chartGeometry.fromSeconds) / (chartGeometry.toSeconds - chartGeometry.fromSeconds)) * chartGeometry.plotWidth;
+          svg.querySelector('[data-chart-crosshair]')?.remove();
+          const crosshair = svgNode('g', { 'data-chart-crosshair': '', class: 'chart-crosshair' });
+          crosshair.append(svgNode('line', { x1: candleX, x2: candleX, y1: chartGeometry.priceTop, y2: chartGeometry.volumeBottom }));
+          crosshair.append(svgNode('line', { x1: chartGeometry.plotLeft, x2: chartGeometry.plotRight, y1: Math.max(chartGeometry.priceTop, Math.min(event.offsetY, chartGeometry.volumeBottom)), y2: Math.max(chartGeometry.priceTop, Math.min(event.offsetY, chartGeometry.volumeBottom)) }));
+          svg.append(crosshair);
+          const iso = new Date(candle.time * 1000).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+          tooltip.textContent = iso + '  O ' + formatPrice(candle.open, chartGeometry.priceRange) + '  H ' + formatPrice(candle.high, chartGeometry.priceRange) + '  L ' + formatPrice(candle.low, chartGeometry.priceRange) + '  C ' + formatPrice(candle.close, chartGeometry.priceRange) + '  V ' + candle.volume.toLocaleString('en-US');
+          tooltip.hidden = false;
+          const tooltipLeft = Math.max(8, Math.min(pointerX + 12, stage.clientWidth - tooltip.offsetWidth - 8));
+          tooltip.style.left = tooltipLeft + 'px';
+          tooltip.style.top = '8px';
+        };
+
+        stage.addEventListener('wheel', (event) => {
+          if (!chartGeometry) return;
+          event.preventDefault();
+          const currentSpan = chartGeometry.toSeconds - chartGeometry.fromSeconds;
+          const minimumSpan = (interval === '5m' ? 300 : 60) * 6;
+          const maximumSpan = chartGeometry.dataToSeconds - chartGeometry.dataFromSeconds;
+          const nextSpan = Math.max(minimumSpan, Math.min(maximumSpan, currentSpan * (event.deltaY < 0 ? 0.8 : 1.25)));
+          const ratio = Math.max(0, Math.min(1, (stageX(event) - chartGeometry.plotLeft) / chartGeometry.plotWidth));
+          const anchor = chartGeometry.fromSeconds + currentSpan * ratio;
+          [viewFromSeconds, viewToSeconds] = clampView(anchor - nextSpan * ratio, anchor + nextSpan * (1 - ratio), chartGeometry.dataFromSeconds, chartGeometry.dataToSeconds);
+          hideCrosshair();
+          render();
+        }, { passive: false });
+
+        stage.addEventListener('pointerdown', (event) => {
+          if (!chartGeometry || event.button !== 0) return;
+          drag = { x: stageX(event), from: chartGeometry.fromSeconds, to: chartGeometry.toSeconds };
+          stage.setPointerCapture(event.pointerId);
+          stage.classList.add('is-panning');
+          hideCrosshair();
+        });
+        stage.addEventListener('pointermove', (event) => {
+          if (!chartGeometry) return;
+          if (!drag) {
+            showCrosshair(event);
+            return;
+          }
+          const span = drag.to - drag.from;
+          const shift = (drag.x - stageX(event)) / chartGeometry.plotWidth * span;
+          [viewFromSeconds, viewToSeconds] = clampView(drag.from + shift, drag.to + shift, chartGeometry.dataFromSeconds, chartGeometry.dataToSeconds);
+          render();
+        });
+        const stopDrag = (event) => {
+          if (!drag) return;
+          drag = null;
+          stage.classList.remove('is-panning');
+          if (stage.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId);
+        };
+        stage.addEventListener('pointerup', stopDrag);
+        stage.addEventListener('pointercancel', stopDrag);
+        stage.addEventListener('pointerleave', () => { if (!drag) hideCrosshair(); });
+        stage.addEventListener('dblclick', () => {
+          if (!chartGeometry) return;
+          viewFromSeconds = chartGeometry.dataFromSeconds;
+          viewToSeconds = chartGeometry.dataToSeconds;
+          hideCrosshair();
+          render();
+        });
 
         const load = async () => {
           if (!eventId || !Number.isFinite(detectedAtMs)) {
@@ -295,6 +399,8 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
           const currentRequest = ++requestNumber;
           if (controller) controller.abort();
           controller = new AbortController();
+          viewFromSeconds = null;
+          viewToSeconds = null;
           showState('loading', 'Loading historical candles…', 'Preparing the ' + interval + ' view around the pump time.');
           buttons.forEach((button) => { button.disabled = true; });
           const params = new URLSearchParams({
@@ -314,7 +420,7 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
             if (currentRequest !== requestNumber) return;
             payload = body;
             if (!Array.isArray(body.items) || body.items.length === 0) {
-              showState('empty', 'No historical candles found', 'Use the TradingView links above to review this event without local candle history.');
+              showState('empty', 'No historical candles found', 'Neither the exchange API nor local market history returned this event window.');
               return;
             }
             render();

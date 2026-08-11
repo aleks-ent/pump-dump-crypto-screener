@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { PumpReviewEvent } from "@screener/db";
 import {
-  loadReviewCandleWindow,
+  loadReviewCandleWindowWithExchangeFallback,
   ReviewCandleError,
   type ReviewCandleWindow,
 } from "./review-candles.js";
@@ -12,7 +12,9 @@ export interface CandleEventRepositoryLike {
   getReviewEvent(eventId: string): Promise<PumpReviewEvent | null>;
 }
 
-export type ReviewCandleWindowLoader = typeof loadReviewCandleWindow;
+export type ReviewCandleWindowLoader = (
+  request: Parameters<typeof loadReviewCandleWindowWithExchangeFallback>[0],
+) => ReviewCandleWindow | Promise<ReviewCandleWindow>;
 
 function sendJson(res: ServerResponse, status: number, value: unknown, headOnly = false): void {
   const body = JSON.stringify(value);
@@ -45,7 +47,7 @@ export async function handleReviewCandleApiRequest(
   req: IncomingMessage,
   res: ServerResponse,
   repository: CandleEventRepositoryLike,
-  loadWindow: ReviewCandleWindowLoader = loadReviewCandleWindow,
+  loadWindow: ReviewCandleWindowLoader = loadReviewCandleWindowWithExchangeFallback,
 ): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
   if (url.pathname !== "/api/market-data/candles") return false;
@@ -91,7 +93,7 @@ export async function handleReviewCandleApiRequest(
       }
     }
 
-    const result: ReviewCandleWindow = loadWindow({
+    const result: ReviewCandleWindow = await loadWindow({
       event: event.pump,
       interval: url.searchParams.get("interval") ?? undefined,
       beforeMs,

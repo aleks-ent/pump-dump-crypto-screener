@@ -16,6 +16,7 @@
   "dependencies": {
     "@screener/core": "workspace:*",
     "@screener/db": "workspace:*",
+    "@screener/exchanges": "workspace:*",
     "@screener/pump-detector": "workspace:*",
     "commander": "^12.1.0"
   },

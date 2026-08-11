@@ -6,6 +6,7 @@ import {
   MAX_REVIEW_CANDLE_CONTEXT_MS,
   ReviewCandleError,
   loadReviewCandleWindow,
+  loadReviewCandleWindowWithExchangeFallback,
   storedPumpInstrument,
   type ReviewSeriesLoader,
 } from "./review-candles.js";
@@ -262,5 +263,95 @@ describe("loadReviewCandleWindow", () => {
         message: "Failed to load historical candles for bybit FUELUSDT",
       }),
     );
+  });
+});
+
+describe("loadReviewCandleWindowWithExchangeFallback", () => {
+  it("fills an empty local window from the exchange without persisting candles", async () => {
+    const fromMs = DETECTED_AT_MS - DEFAULT_REVIEW_CANDLE_CONTEXT_MS;
+    const remoteItems = Array.from({ length: 48 }, (_, index) => ({
+      time: Math.floor((Math.ceil(fromMs / 300_000) * 300_000 + index * 300_000) / 1_000),
+      open: 1 + index,
+      high: 2 + index,
+      low: 0.5 + index,
+      close: 1.5 + index,
+      volume: 100 + index,
+      quoteVolume: 200 + index,
+    }));
+    const fetchExchangeCandles = vi.fn(async () => remoteItems);
+
+    const result = await loadReviewCandleWindowWithExchangeFallback(
+      { event: sampleEvent() },
+      {},
+      {
+        loadSeries: () =>
+          seriesResult({
+            candles: [],
+            quality: { badData: true, duplicateBars: 0, gaps: 0, reasons: ["No data"] },
+          }),
+        resolvePath: (path) => path,
+        fetchExchangeCandles,
+      },
+    );
+
+    expect(fetchExchangeCandles).toHaveBeenCalledWith(
+      expect.objectContaining({
+        interval: "5m",
+        fromMs: DETECTED_AT_MS - DEFAULT_REVIEW_CANDLE_CONTEXT_MS,
+        toMs: DETECTED_AT_MS + DEFAULT_REVIEW_CANDLE_CONTEXT_MS,
+      }),
+      undefined,
+    );
+    expect(result.items).toHaveLength(48);
+    expect(result.quality).toMatchObject({ loadedBars: 48, expectedBars: 48, coveragePct: 100 });
+    expect(result.source).toMatchObject({
+      source: "exchange_api",
+      exchangeApiAttempted: true,
+      exchangeApiBars: 48,
+      exchangeApiError: false,
+    });
+  });
+
+  it("does not call the exchange when local coverage is complete", async () => {
+    const fromMs = DETECTED_AT_MS - DEFAULT_REVIEW_CANDLE_CONTEXT_MS;
+    const candles = Array.from({ length: 48 }, (_, index) =>
+      candle(Math.ceil(fromMs / 300_000) * 300_000 + index * 300_000),
+    );
+    const fetchExchangeCandles = vi.fn(async () => []);
+
+    const result = await loadReviewCandleWindowWithExchangeFallback(
+      { event: sampleEvent() },
+      {},
+      {
+        loadSeries: () => seriesResult({ candles }),
+        resolvePath: (path) => path,
+        fetchExchangeCandles,
+      },
+    );
+
+    expect(fetchExchangeCandles).not.toHaveBeenCalled();
+    expect(result.source.exchangeApiAttempted).toBe(false);
+  });
+
+  it("keeps partial local candles available when the exchange request fails", async () => {
+    const result = await loadReviewCandleWindowWithExchangeFallback(
+      { event: sampleEvent() },
+      {},
+      {
+        loadSeries: () => seriesResult(),
+        resolvePath: (path) => path,
+        fetchExchangeCandles: async () => {
+          throw new Error("offline");
+        },
+      },
+    );
+
+    expect(result.items).toHaveLength(1);
+    expect(result.source).toMatchObject({
+      exchangeApiAttempted: true,
+      exchangeApiBars: 0,
+      exchangeApiError: true,
+    });
+    expect(result.quality.reasons).toContain("Exchange API unavailable; showing local candles");
   });
 });
