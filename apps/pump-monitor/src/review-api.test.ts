@@ -54,7 +54,12 @@ function annotation(): PumpAnnotation {
 }
 
 function event(): PumpReviewEvent {
-  return { pump: samplePump(), annotation: null, status: "unreviewed" };
+  return {
+    pump: samplePump(),
+    annotation: null,
+    status: "unreviewed",
+    telegramVotes: { pump: 3, dump: 1, none: 2 },
+  };
 }
 
 class FakeReviewRepository implements ReviewRepositoryLike {
@@ -158,6 +163,7 @@ describe("pump review API", () => {
       detectedAt: "2026-07-01T10:00:00.000Z",
       detectorScore: 91,
       reviewStatus: "unreviewed",
+      telegramVotes: { pump: 3, dump: 1, none: 2 },
       metadata: { coin: "BTC/USDT", eventCount: 2 },
     });
   });

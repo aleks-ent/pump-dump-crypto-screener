@@ -39,6 +39,24 @@ const HUMAN_ANNOTATION_JOIN = `
     ON a.event_id = p.id AND a.source = 'human'
 `.trim();
 
+const TELEGRAM_VOTE_COLUMNS = `
+  COALESCE(tv.pump_votes, 0) AS telegram_pump_votes,
+  COALESCE(tv.dump_votes, 0) AS telegram_dump_votes,
+  COALESCE(tv.none_votes, 0) AS telegram_none_votes
+`.trim();
+
+const TELEGRAM_VOTE_JOIN = `
+  LEFT JOIN (
+    SELECT
+      episode_id,
+      SUM(CASE WHEN classification = 'pump' THEN 1 ELSE 0 END) AS pump_votes,
+      SUM(CASE WHEN classification = 'dump' THEN 1 ELSE 0 END) AS dump_votes,
+      SUM(CASE WHEN classification = 'none' THEN 1 ELSE 0 END) AS none_votes
+    FROM telegram_episode_votes
+    GROUP BY episode_id
+  ) tv ON tv.episode_id = p.id
+`.trim();
+
 function rowToStoredPump(row: Record<string, unknown>): StoredPump {
   const classification = row.classification;
   return {
@@ -116,6 +134,11 @@ function rowToReviewEvent(row: Record<string, unknown>): PumpReviewEvent {
     pump: rowToStoredPump(row),
     annotation,
     status: reviewStatus(annotation),
+    telegramVotes: {
+      pump: Number(row.telegram_pump_votes ?? 0),
+      dump: Number(row.telegram_dump_votes ?? 0),
+      none: Number(row.telegram_none_votes ?? 0),
+    },
   };
 }
 
@@ -256,9 +279,10 @@ export class PumpReviewRepository {
   async getReviewEvent(eventId: string): Promise<PumpReviewEvent | null> {
     const result = await this.client.execute({
       sql: `
-        SELECT ${PUMP_COLUMNS}, ${ANNOTATION_COLUMNS}
+        SELECT ${PUMP_COLUMNS}, ${ANNOTATION_COLUMNS}, ${TELEGRAM_VOTE_COLUMNS}
         FROM pumps p
         ${HUMAN_ANNOTATION_JOIN}
+        ${TELEGRAM_VOTE_JOIN}
         WHERE p.id = ? AND p.episode_type = 'pump'
       `.trim(),
       args: [eventId],
@@ -288,9 +312,10 @@ export class PumpReviewRepository {
 
     const result = await this.client.execute({
       sql: `
-        SELECT ${PUMP_COLUMNS}, ${ANNOTATION_COLUMNS}
+        SELECT ${PUMP_COLUMNS}, ${ANNOTATION_COLUMNS}, ${TELEGRAM_VOTE_COLUMNS}
         FROM pumps p
         ${HUMAN_ANNOTATION_JOIN}
+        ${TELEGRAM_VOTE_JOIN}
         WHERE ${where}
         ORDER BY ${orderBy(filters.sort)}
         LIMIT ? OFFSET ?

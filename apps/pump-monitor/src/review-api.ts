@@ -58,6 +58,7 @@ export interface SerializedReviewEvent {
   updatedAt: string;
   reviewStatus: ReviewStatus;
   annotation: PumpAnnotation | null;
+  telegramVotes: PumpReviewEvent["telegramVotes"];
   metadata: PumpReviewEvent["pump"];
 }
 
@@ -162,6 +163,7 @@ export function serializeReviewEvent(reviewEvent: PumpReviewEvent): SerializedRe
     updatedAt: pump.lastSeenAt,
     reviewStatus: status,
     annotation,
+    telegramVotes: reviewEvent.telegramVotes,
     metadata: pump,
   };
 }

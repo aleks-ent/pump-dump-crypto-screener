@@ -30,7 +30,12 @@ function pump(): StoredPump {
   };
 }
 
-const reviewEvent: PumpReviewEvent = { pump: pump(), annotation: null, status: "unreviewed" };
+const reviewEvent: PumpReviewEvent = {
+  pump: pump(),
+  annotation: null,
+  status: "unreviewed",
+  telegramVotes: { pump: 0, dump: 0, none: 0 },
+};
 const servers: ReturnType<typeof createServer>[] = [];
 
 afterEach(async () => {

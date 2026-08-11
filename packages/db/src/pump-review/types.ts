@@ -1,4 +1,5 @@
 import type { StoredPump } from "../pumps/types.js";
+import type { TelegramEpisodeVoteCounts } from "../telegram-episode-voting/repository.js";
 
 export const PUMP_CATEGORIES = [
   "sustained_move",
@@ -48,6 +49,7 @@ export interface PumpReviewEvent {
   pump: StoredPump;
   annotation: PumpAnnotation | null;
   status: ReviewStatus;
+  telegramVotes: TelegramEpisodeVoteCounts;
 }
 
 export interface PumpEventFilters {

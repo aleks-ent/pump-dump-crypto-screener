@@ -77,6 +77,7 @@ function reviewEvent(
         : humanAnnotation.category === "unclear"
           ? "unclear"
           : "reviewed",
+    telegramVotes: { pump: 0, dump: 0, none: 0 },
   };
 }
 
