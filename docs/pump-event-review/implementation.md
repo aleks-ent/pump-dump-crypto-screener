@@ -59,6 +59,9 @@ fetch: {
 },
 ```
 
+The reviewer opens the 5m chart by default because local 5m coverage is normally much
+more complete. The 1m option remains available for events with retained 1m candles.
+
 The normal `pnpm pump:monitor` pipeline refreshes the configured lookback before it
 scans. To prepare or repair the local history independently, use `pnpm fetch:all` and
 inspect coverage with `pnpm report:coverage`. The first download can take hours and

@@ -17,8 +17,9 @@ describe("review chart client", () => {
     expect(html).toContain('data-chart-state="loading"');
     expect(html).toContain('data-event-id="pump|BTC/USDT|&lt;unsafe&gt;&quot;"');
     expect(html).toContain('data-detected-at-ms="1788000000000"');
-    expect(html).toContain('data-chart-interval="1m"');
-    expect(html).toContain('data-chart-interval="5m"');
+    expect(html).toContain('data-chart-interval="1m" aria-pressed="false"');
+    expect(html).toContain('class="is-active" data-chart-interval="5m" aria-pressed="true"');
+    expect(html).toContain("Preparing the 5 minute view");
     expect(html).toContain('aria-label="Historical OHLCV chart for the selected event"');
     expect(html).toContain("2h before · 2h after pump time");
     expect(html).toContain("data-chart-retry");
@@ -66,6 +67,7 @@ describe("review chart client", () => {
     expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("eventId,");
     expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("detectedAtMs - CONTEXT_MS");
     expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("detectedAtMs + CONTEXT_MS");
+    expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("let interval = '5m'");
     expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("[0, 'Pump start', true]");
     expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("[5 * 60, '+5m', false]");
     expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("[10 * 60, '+10m', false]");

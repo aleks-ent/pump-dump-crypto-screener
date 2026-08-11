@@ -440,7 +440,7 @@ The chart must:
 
 - Open the correct symbol.
 - Open around the historical detection timestamp.
-- Default to a one-minute timeframe.
+- Default to a five-minute timeframe because it has substantially better local coverage.
 - Allow switching between one-minute and five-minute timeframes.
 - Display sufficient pre-event and post-event context.
 - Clearly mark the screener detection timestamp.
