@@ -44,6 +44,65 @@ describe("renderPumpsPage", () => {
     expect(html).toContain("https://cdn.tailwindcss.com");
   });
 
+  describe("when disk space is available", () => {
+    it("renders free space, total, and used percent", () => {
+      const html = renderPumpsPage([sampleStoredPump()], new Date(), {
+        freeBytes: 412 * 1024 ** 3,
+        totalBytes: 1024 ** 4,
+        usedPercent: 59,
+      });
+
+      expect(html).toContain("412 GB free of 1.0 TB");
+      expect(html).toContain("59% used");
+    });
+
+    it("renders the usage bar at the used percent", () => {
+      const html = renderPumpsPage([sampleStoredPump()], new Date(), {
+        freeBytes: 412 * 1024 ** 3,
+        totalBytes: 1024 ** 4,
+        usedPercent: 59,
+      });
+
+      expect(html).toContain('style="width:59%"');
+    });
+  });
+
+  describe("when free space is under fifteen percent", () => {
+    it("renders the usage bar in amber", () => {
+      const html = renderPumpsPage([sampleStoredPump()], new Date(), {
+        freeBytes: 100 * 1024 ** 3,
+        totalBytes: 1024 ** 4,
+        usedPercent: 90,
+      });
+
+      expect(html).toContain("bg-amber-500");
+      expect(html).not.toContain("bg-red-500");
+    });
+  });
+
+  describe("when free space is under five percent", () => {
+    it("renders the usage bar in red", () => {
+      const html = renderPumpsPage([sampleStoredPump()], new Date(), {
+        freeBytes: 20 * 1024 ** 3,
+        totalBytes: 1024 ** 4,
+        usedPercent: 98,
+      });
+
+      expect(html).toContain("bg-red-500");
+      expect(html).not.toContain("bg-amber-500");
+    });
+  });
+
+  describe("when disk space could not be read", () => {
+    it("renders an unavailable notice without a usage bar", () => {
+      const html = renderPumpsPage([sampleStoredPump()], new Date(), null);
+
+      expect(html).toContain("Disk usage unavailable");
+      expect(html).not.toContain("free of");
+      expect(html).not.toContain('style="width:');
+    });
+  });
+
   it("escapes text and suppresses unsafe chart links", () => {
     const html = renderPumpsPage([
       sampleStoredPump({

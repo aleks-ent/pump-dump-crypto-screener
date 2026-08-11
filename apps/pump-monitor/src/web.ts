@@ -11,6 +11,12 @@ import {
   type StoredPump,
 } from "@screener/db";
 import { resolveRepoPath } from "@screener/core";
+import {
+  formatBytes,
+  pickProbePath,
+  readDiskSpace,
+  type DiskSpace,
+} from "./disk-space.js";
 import { handleReviewApiRequest, parsePumpEventFilters } from "./review-api.js";
 import { handleReviewCandleApiRequest } from "./review-candle-api.js";
 import { handleReviewExportRequest } from "./review-export.js";
@@ -30,6 +36,7 @@ import {
 const DEFAULT_WEB_PORT = 3000;
 const DEFAULT_WEB_HOST = "127.0.0.1";
 const PUMP_LIMIT = 10;
+const MARKET_DATA_DIR = "data/market_stats";
 
 interface WebCliOptions {
   port?: string;
@@ -210,9 +217,27 @@ function renderPumpRow(pump: StoredPump): string {
         </tr>`;
 }
 
+function renderDiskSpace(disk: DiskSpace | null): string {
+  if (!disk) {
+    return `<p class="mt-1 text-sm text-zinc-500">Disk usage unavailable</p>`;
+  }
+
+  const freePercent = disk.totalBytes > 0 ? (disk.freeBytes / disk.totalBytes) * 100 : 0;
+  const barColor =
+    freePercent < 5 ? "bg-red-500" : freePercent < 15 ? "bg-amber-500" : "bg-emerald-500";
+  const textColor =
+    freePercent < 5 ? "text-red-700" : freePercent < 15 ? "text-amber-700" : "text-zinc-600";
+
+  return `<div class="mt-1 flex items-center gap-3">
+          <p class="text-sm ${textColor}">${formatBytes(disk.freeBytes)} free of ${formatBytes(disk.totalBytes)} (${disk.usedPercent}% used)</p>
+          <div class="h-1.5 w-32 overflow-hidden rounded-full bg-zinc-200"><div class="h-full ${barColor}" style="width:${disk.usedPercent}%"></div></div>
+        </div>`;
+}
+
 export function renderPumpsPage(
   pumps: StoredPump[],
   generatedAt: Date = new Date(),
+  disk: DiskSpace | null = null,
 ): string {
   const rows =
     pumps.length > 0
@@ -236,6 +261,7 @@ export function renderPumpsPage(
       <div>
         <h1 class="text-2xl font-semibold">Last 10 Pumps</h1>
         <p class="mt-1 text-sm text-zinc-600">Updated ${fmtUtc(generatedAt.getTime())} UTC</p>
+        ${renderDiskSpace(disk)}
       </div>
       <a class="inline-flex h-9 w-fit items-center rounded-md border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 hover:bg-zinc-100" href="/">Refresh</a>
     </header>
@@ -327,14 +353,16 @@ async function handleRequest(
     return;
   }
 
-  const pumps = await repo.listStoredPumps({
-    episodeType: "pump",
-    limit: PUMP_LIMIT,
-  });
+  const [pumps, disk] = await Promise.all([
+    repo.listStoredPumps({ episodeType: "pump", limit: PUMP_LIMIT }),
+    readDiskSpace(
+      pickProbePath([resolveRepoPath(MARKET_DATA_DIR), resolveRepoPath(".")]),
+    ),
+  ]);
   send(
     res,
     200,
-    renderPumpsPage(pumps),
+    renderPumpsPage(pumps, new Date(), disk),
     "text/html; charset=utf-8",
     headOnly,
   );
