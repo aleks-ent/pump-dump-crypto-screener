@@ -81,17 +81,37 @@ PM2 keeps all processes alive. When `pump-monitor` finishes a pipeline run it ex
 
 The web page is served by `pump-web` on `127.0.0.1:3000` by default. Put nginx in front of it for public HTTP/HTTPS; see [docs/nginx_letsencrypt.md](docs/nginx_letsencrypt.md).
 
-The manual pump-event reviewer is available at `/review`. It uses the existing Turso
-database plus local 1m/5m market data and can optionally require HTTP Basic auth.
-See the [pump review operator guide](docs/pump-event-review/implementation.md) for
-schema setup, market-data requirements, access control, deployment, and release checks.
-
 Persist PM2 across reboots:
 
 ```bash
 pm2 save
 pm2 startup   # follow the printed command (once per server)
 ```
+
+## Pump Event Reviewer
+
+<p align="center">
+  <img src="docs/assets/pump-event-reviewer.png" alt="Pump Event Reviewer showing the event browser, Telegram subscriber votes, an interactive historical candlestick chart, and human classification controls" width="1200"/>
+</p>
+
+The manual reviewer at `/review` turns detected pumps into a human-labeled dataset for
+evaluating and improving the screener. It is designed for a fast, keyboard-friendly
+workflow:
+
+- Browse and filter stored pump events by status, category, exchange, symbol, and date.
+- Inspect Telegram subscriber votes alongside a 1m or 5m OHLCV chart centered on the
+  screener's detection time. Charts use local history when available and otherwise load
+  the four-hour window from the event's public Binance or Bybit API.
+- Classify each event as a sustained move, wick spike, volume only, market move,
+  illiquid noise, or unclear; optionally record confidence and a comment.
+- Save and advance with keyboard shortcuts, revisit existing labels, track review
+  progress, and export labeled datasets as JSON or CSV.
+
+Human annotations are stored separately from the original pump records, so review does
+not modify detector output. The workspace uses the existing Turso database, makes no
+browser-to-exchange requests, and can be protected with simple HTTP Basic authentication.
+See the [pump review operator guide](docs/pump-event-review/implementation.md) for setup,
+access control, deployment, and release checks.
 
 ## PM2 day-to-day
 
