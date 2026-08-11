@@ -62,7 +62,7 @@ export function renderReviewChart(options: ReviewChartOptions): string {
           <div class="chart-toolbar">
             <div><strong>Historical chart</strong><span data-chart-context>2h before · 2h after pump time</span></div>
             <div class="timeframe-switch" aria-label="Chart timeframe">
-              <button type="button" class="is-active" data-chart-interval="1m" aria-pressed="true">1m</button><button type="button" data-chart-interval="5m" aria-pressed="false">5m</button>
+              <button type="button" data-chart-interval="1m" aria-pressed="false">1m</button><button type="button" class="is-active" data-chart-interval="5m" aria-pressed="true">5m</button>
             </div>
           </div>
           <div class="tradingview-tools" data-tradingview-tools>
@@ -83,7 +83,7 @@ export function renderReviewChart(options: ReviewChartOptions): string {
             <div class="chart-message" data-chart-message role="status" aria-live="polite">
               <span class="spinner" data-chart-spinner aria-hidden="true"></span>
               <strong data-chart-message-title>Loading historical candles…</strong>
-              <span data-chart-message-detail>Preparing the 1 minute view around the pump time.</span>
+              <span data-chart-message-detail>Preparing the 5 minute view around the pump time.</span>
               <button type="button" data-chart-retry hidden>Retry</button>
             </div>
           </div>
@@ -133,7 +133,7 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
         const buttons = root.querySelectorAll('[data-chart-interval]');
         const eventId = root.dataset.eventId || '';
         const detectedAtMs = Number(root.dataset.detectedAtMs);
-        let interval = '1m';
+        let interval = '5m';
         let payload = null;
         let requestNumber = 0;
         let controller = null;

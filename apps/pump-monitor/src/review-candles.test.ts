@@ -118,7 +118,7 @@ describe("loadReviewCandleWindow", () => {
         symbolNative: "FUELUSDT",
         instrumentType: "linear_perp",
       }),
-      "1m",
+      "5m",
       {
         ndjsonRoots: [
           "/repo/data/market_stats/api_fallback",
@@ -135,7 +135,7 @@ describe("loadReviewCandleWindow", () => {
       eventId: "FUEL/USDT|2026-07-12T14:32:00.000Z",
       exchange: "bybit",
       symbol: "FUELUSDT",
-      interval: "1m",
+      interval: "5m",
       detectedAt: Math.floor(DETECTED_AT_MS / 1_000),
       items: [
         {
@@ -152,7 +152,7 @@ describe("loadReviewCandleWindow", () => {
         badData: false,
         duplicateBars: 1,
         gaps: 2,
-        expectedBars: 240,
+        expectedBars: 48,
         loadedBars: 1,
       },
       source: {
@@ -163,7 +163,7 @@ describe("loadReviewCandleWindow", () => {
         usedArchives: true,
       },
     });
-    expect(result.quality.coveragePct).toBeCloseTo(100 / 240);
+    expect(result.quality.coveragePct).toBeCloseTo(100 / 48);
   });
 
   it("supports a deterministic bounded 5m window and repository-relative data directory", () => {
