@@ -444,6 +444,8 @@ The chart must:
 - Allow switching between one-minute and five-minute timeframes.
 - Display sufficient pre-event and post-event context.
 - Clearly mark the screener detection timestamp.
+- Support wheel zoom, drag-to-pan, and crosshair OHLCV inspection.
+- Reset the viewport to the event window on double-click.
 
 Recommended default visible window:
 
@@ -497,8 +499,12 @@ Use an internally rendered OHLCV chart when TradingView embedding cannot reliabl
 This option should:
 
 - Load candles from the application's backend.
+- Let the backend fill incomplete local windows from the event's public exchange API.
+- Keep exchange requests server-side rather than fetching them from the browser.
+- Avoid requiring a persistent candle cache for review availability.
 - Display price candles and volume.
 - Support one-minute and five-minute intervals.
+- Support interactive zoom, pan, and candle inspection.
 - Draw the required event markers.
 - Keep chart behavior deterministic.
 

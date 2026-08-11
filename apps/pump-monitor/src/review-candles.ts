@@ -9,6 +9,10 @@ import {
   type SeriesDataSource,
   type Timeframe,
 } from "@screener/pump-detector";
+import {
+  fetchReviewExchangeCandles,
+  type ReviewExchangeCandleDependencies,
+} from "./review-exchange-candles.js";
 
 const HOUR_MS = 60 * 60 * 1_000;
 
@@ -42,7 +46,7 @@ export class ReviewCandleError extends Error {
 
 export interface ReviewCandleRequest {
   event: StoredPump;
-  /** Defaults to 1m, the review UI's preferred initial timeframe. */
+  /** Defaults to 5m, the review UI's preferred initial timeframe. */
   interval?: string;
   /** Milliseconds of context before the event detection time. Defaults to two hours. */
   beforeMs?: number;
@@ -78,12 +82,20 @@ export interface ReviewCandleQuality {
   coveragePct: number;
 }
 
+export type ReviewCandleDataSource =
+  | SeriesDataSource
+  | "exchange_api"
+  | "local_and_exchange_api";
+
 export interface ReviewCandleSource {
-  source: SeriesDataSource;
+  source: ReviewCandleDataSource;
   ndjsonBars: number;
   archiveBars: number;
   archiveFileCount: number;
   usedArchives: boolean;
+  exchangeApiAttempted: boolean;
+  exchangeApiBars: number;
+  exchangeApiError: boolean;
 }
 
 export interface ReviewCandleWindow {
@@ -110,6 +122,11 @@ export type ReviewSeriesLoader = (
 export interface ReviewCandleDependencies {
   loadSeries?: ReviewSeriesLoader;
   resolvePath?: typeof resolveRepoPath;
+}
+
+export interface ReviewCandleFallbackDependencies extends ReviewCandleDependencies {
+  fetchExchangeCandles?: typeof fetchReviewExchangeCandles;
+  exchange?: ReviewExchangeCandleDependencies;
 }
 
 function requireNonEmpty(value: string, field: string): string {
@@ -302,6 +319,112 @@ export function loadReviewCandleWindow(
       archiveBars: loaded.meta.archiveBars,
       archiveFileCount: loaded.meta.archiveFiles.length,
       usedArchives: loaded.meta.usedArchives,
+      exchangeApiAttempted: false,
+      exchangeApiBars: 0,
+      exchangeApiError: false,
+    },
+  };
+}
+
+function mergedQuality(
+  items: ReviewChartCandle[],
+  fromMs: number,
+  toMs: number,
+  interval: Timeframe,
+): ReviewCandleQuality {
+  const intervalMs = INTERVAL_MS[interval];
+  const expectedBars = expectedBarCount(fromMs, toMs, intervalMs);
+  let gaps = 0;
+  for (let index = 1; index < items.length; index += 1) {
+    const differenceMs = (items[index]!.time - items[index - 1]!.time) * 1_000;
+    if (differenceMs > intervalMs) gaps += Math.max(0, Math.round(differenceMs / intervalMs) - 1);
+  }
+  const loadedBars = items.length;
+  const coveragePct =
+    expectedBars === 0 ? 0 : Math.min(100, (loadedBars / expectedBars) * 100);
+  const reasons: string[] = [];
+  if (loadedBars === 0) reasons.push("No candles returned by local storage or exchange API");
+  if (loadedBars < expectedBars) reasons.push(`${expectedBars - loadedBars} candles missing`);
+  if (gaps > 0) reasons.push(`${gaps} timestamp gaps`);
+  return {
+    badData: loadedBars < expectedBars || gaps > 0,
+    duplicateBars: 0,
+    gaps,
+    reasons,
+    expectedBars,
+    loadedBars,
+    coveragePct,
+  };
+}
+
+/**
+ * Prefer complete local history, otherwise fill the requested window from the
+ * event's public exchange API. Remote candles are returned only to the caller;
+ * this path does not write a cache or mutate the market-data archive.
+ */
+export async function loadReviewCandleWindowWithExchangeFallback(
+  request: ReviewCandleRequest,
+  storage: ReviewCandleStorageOptions = {},
+  dependencies: ReviewCandleFallbackDependencies = {},
+): Promise<ReviewCandleWindow> {
+  const local = loadReviewCandleWindow(request, storage, dependencies);
+  if (
+    local.quality.expectedBars > 0 &&
+    local.quality.loadedBars >= local.quality.expectedBars &&
+    local.quality.coveragePct >= 100
+  ) {
+    return local;
+  }
+
+  const fetchExchangeCandles =
+    dependencies.fetchExchangeCandles ?? fetchReviewExchangeCandles;
+  let exchangeItems: ReviewChartCandle[];
+  try {
+    exchangeItems = await fetchExchangeCandles(
+      {
+        instrument: storedPumpInstrument(request.event),
+        interval: local.interval,
+        fromMs: local.fromMs,
+        toMs: local.toMs,
+      },
+      dependencies.exchange,
+    );
+  } catch (error) {
+    if (local.items.length > 0) {
+      return {
+        ...local,
+        quality: {
+          ...local.quality,
+          reasons: [...local.quality.reasons, "Exchange API unavailable; showing local candles"],
+        },
+        source: {
+          ...local.source,
+          exchangeApiAttempted: true,
+          exchangeApiError: true,
+        },
+      };
+    }
+    throw new ReviewCandleError(
+      "CANDLE_LOAD_FAILED",
+      `Failed to fetch historical candles for ${local.exchange} ${local.symbol}`,
+      { cause: error },
+    );
+  }
+
+  const itemsByTime = new Map<number, ReviewChartCandle>();
+  for (const candle of local.items) itemsByTime.set(candle.time, candle);
+  for (const candle of exchangeItems) itemsByTime.set(candle.time, candle);
+  const items = [...itemsByTime.values()].sort((left, right) => left.time - right.time);
+  return {
+    ...local,
+    items,
+    quality: mergedQuality(items, local.fromMs, local.toMs, local.interval),
+    source: {
+      ...local.source,
+      source: local.items.length > 0 ? "local_and_exchange_api" : "exchange_api",
+      exchangeApiAttempted: true,
+      exchangeApiBars: exchangeItems.length,
+      exchangeApiError: false,
     },
   };
 }
