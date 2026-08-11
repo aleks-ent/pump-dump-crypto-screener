@@ -73,10 +73,11 @@ or restarting:
 Missing data should produce an explicit chart state; it must not prevent the reviewer
 from assigning or updating a label. Every selected event also provides TradingView 1m
 and 5m links derived from the stored exchange, native symbol, and instrument type. If
-local candles are unavailable, use either link and press `Alt+G` (`Option+G` on macOS)
-in TradingView to open **Go to date**. The adjacent **Copy pump time** action copies the
-exact UTC detection timestamp for that dialog. TradingView availability and intraday
-history depth still depend on the symbol and the reviewer's TradingView plan.
+local candles are unavailable, use either link, set the TradingView chart timezone to
+UTC, and press `Alt+G` (`Option+G` on macOS) to open **Go to date**. TradingView uses
+separate inputs, so use **Copy date** for the `YYYY-MM-DD` field and **Copy time** for
+the `HH:mm` field. TradingView availability and intraday history depth still depend on
+the symbol and the reviewer's TradingView plan.
 
 The reviewer UI intentionally omits detector version, detector score, trigger summary,
 and detector-specific filters. Those values remain untouched in the source event data
@@ -151,7 +152,7 @@ back the database by deleting annotation data.
 - [ ] Both 1m and 5m candles load around a known historical event.
 - [ ] Missing candle history displays a recoverable error without losing form input.
 - [ ] TradingView 1m and 5m links open the selected exchange instrument in a new tab.
-- [ ] Copy pump time copies the selected event's exact UTC detection timestamp.
+- [ ] Copy date and Copy time produce values accepted by TradingView's separate UTC fields.
 - [ ] Keys `1` through `6` select the exact six-category taxonomy.
 - [ ] Save & Next persists category, confidence, and comment, then advances once.
 - [ ] A reviewed annotation can be revisited and edited without duplication.

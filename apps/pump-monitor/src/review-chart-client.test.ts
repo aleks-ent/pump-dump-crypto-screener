@@ -33,7 +33,11 @@ describe("review chart client", () => {
     );
     expect(html).toContain('target="_blank" rel="noopener noreferrer"');
     expect(html).toContain("2026-08-29 10:40:00 UTC");
-    expect(html).toContain("data-copy-pump-time");
+    expect(html).toContain('data-copy-value="2026-08-29"');
+    expect(html).toContain('data-copy-value="10:40"');
+    expect(html).toContain("Copy date");
+    expect(html).toContain("Copy time");
+    expect(html).toContain("timezone to UTC");
     expect(html).toContain("Alt/Option + G");
     expect(html).not.toContain("<unsafe>");
   });
@@ -71,7 +75,7 @@ describe("review chart client", () => {
     expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("showState('error'");
     expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("navigator.clipboard.writeText");
     expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("document.execCommand('copy')");
-    expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("Pump time copied");
+    expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("Paste it into TradingView’s");
     expect(REVIEW_CHART_CLIENT_SCRIPT).toContain("retry.addEventListener('click', load)");
   });
 });

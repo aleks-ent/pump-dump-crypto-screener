@@ -17,15 +17,22 @@ function escapeAttribute(value: string): string {
     .replace(/'/g, "&#039;");
 }
 
-function formatDetectedAt(detectedAtMs: number): { iso: string; display: string } {
+function formatDetectedAt(detectedAtMs: number): {
+  iso: string;
+  display: string;
+  date: string;
+  time: string;
+} {
   const detectedAt = new Date(detectedAtMs);
   if (Number.isNaN(detectedAt.getTime())) {
-    return { iso: "", display: "Unknown UTC time" };
+    return { iso: "", display: "Unknown UTC time", date: "", time: "" };
   }
   const iso = detectedAt.toISOString();
   return {
     iso,
     display: `${iso.slice(0, 19).replace("T", " ")} UTC`,
+    date: iso.slice(0, 10),
+    time: iso.slice(11, 16),
   };
 }
 
@@ -49,6 +56,8 @@ export function renderReviewChart(options: ReviewChartOptions): string {
     buildTradingViewChartUrl({ ...tradingViewOptions, timeframe: "5m" }),
   );
   const pumpTime = escapeAttribute(detectedAt.display);
+  const pumpDate = escapeAttribute(detectedAt.date);
+  const pumpMinute = escapeAttribute(detectedAt.time);
   return `<div class="chart-card" data-chart-root data-chart-state="loading" data-event-id="${eventId}" data-detected-at-ms="${options.detectedAtMs}">
           <div class="chart-toolbar">
             <div><strong>Historical chart</strong><span data-chart-context>2h before · 2h after pump time</span></div>
@@ -64,9 +73,10 @@ export function renderReviewChart(options: ReviewChartOptions): string {
             <div class="tradingview-actions">
               <a href="${tradingView1m}" target="_blank" rel="noopener noreferrer" data-tradingview-link data-tradingview-interval="1m">TradingView 1m <span aria-hidden="true">↗</span></a>
               <a href="${tradingView5m}" target="_blank" rel="noopener noreferrer" data-tradingview-link data-tradingview-interval="5m">TradingView 5m <span aria-hidden="true">↗</span></a>
-              <button type="button" data-copy-pump-time data-pump-time="${pumpTime}">Copy pump time</button>
+              <button type="button" data-copy-tradingview-value data-copy-value="${pumpDate}" data-copy-field="date">Copy date</button>
+              <button type="button" data-copy-tradingview-value data-copy-value="${pumpMinute}" data-copy-field="time">Copy time</button>
             </div>
-            <span class="tradingview-guidance" data-copy-pump-feedback aria-live="polite">In TradingView, press Alt/Option + G and use this UTC time.</span>
+            <span class="tradingview-guidance" data-copy-pump-feedback aria-live="polite">Set the TradingView chart timezone to UTC. Press Alt/Option + G, then paste the date and time separately.</span>
           </div>
           <div class="chart-stage" data-chart-stage role="img" aria-label="Historical OHLCV chart for the selected event">
             <svg data-chart-svg aria-hidden="true"></svg>
@@ -118,7 +128,7 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
         const retry = root.querySelector('[data-chart-retry]');
         const spinner = root.querySelector('[data-chart-spinner]');
         const quality = root.querySelector('[data-chart-quality]');
-        const copyPumpTime = root.querySelector('[data-copy-pump-time]');
+        const copyTradingViewValues = root.querySelectorAll('[data-copy-tradingview-value]');
         const copyFeedback = root.querySelector('[data-copy-pump-feedback]');
         const buttons = root.querySelectorAll('[data-chart-interval]');
         const eventId = root.dataset.eventId || '';
@@ -331,15 +341,18 @@ export const REVIEW_CHART_CLIENT_SCRIPT = String.raw`
             load();
           });
         });
-        copyPumpTime?.addEventListener('click', async () => {
-          const pumpTime = copyPumpTime.dataset.pumpTime || '';
-          if (!pumpTime) return;
-          try {
-            await writeClipboard(pumpTime);
-            if (copyFeedback) copyFeedback.textContent = 'Pump time copied. In TradingView, press Alt/Option + G and paste it.';
-          } catch {
-            if (copyFeedback) copyFeedback.textContent = 'Could not copy automatically. Select the detected UTC time shown here.';
-          }
+        copyTradingViewValues.forEach((button) => {
+          button.addEventListener('click', async () => {
+            const value = button.dataset.copyValue || '';
+            const field = button.dataset.copyField || 'value';
+            if (!value) return;
+            try {
+              await writeClipboard(value);
+              if (copyFeedback) copyFeedback.textContent = field.charAt(0).toUpperCase() + field.slice(1) + ' copied (' + value + '). Paste it into TradingView’s ' + field + ' field.';
+            } catch {
+              if (copyFeedback) copyFeedback.textContent = 'Could not copy automatically. Enter the UTC ' + field + ' shown in the pump time.';
+            }
+          });
         });
         retry.addEventListener('click', load);
         if ('ResizeObserver' in window) {

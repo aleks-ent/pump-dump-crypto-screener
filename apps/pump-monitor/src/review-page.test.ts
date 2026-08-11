@@ -48,7 +48,8 @@ describe("renderReviewPage", () => {
     expect(html).toContain("TradingView 1m");
     expect(html).toContain("TradingView 5m");
     expect(html).toContain("BYBIT%3AFUELUSDT.P");
-    expect(html).toContain("Copy pump time");
+    expect(html).toContain("Copy date");
+    expect(html).toContain("Copy time");
     expect(html).toContain("213</strong> / 684 reviewed");
     expect(html).toContain("31%");
     expect(html).toContain("Historical chart");
