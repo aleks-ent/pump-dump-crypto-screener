@@ -69,6 +69,10 @@ async function main(): Promise<void> {
     .option("--quote-currencies <items...>", "Quote currencies (default: USDT)")
     .option("--output <dir>", "Output directory (default: data/market_stats)")
     .option("--config <path>", "YAML config (default: config/archives.yaml)")
+    .option(
+      "--refresh-universe-days <n>",
+      "Rebuild the symbol universe when it is at least N days old",
+    )
     .option("--processes <n>", "Worker count per exchange (default: binance 16, bybit 8)")
     .option("--series-workers <n>", "Parallel series per worker process (default: 8)")
     .option("--file-workers <n>", "Parallel archive files per series (default: 8)")
@@ -95,6 +99,7 @@ async function main(): Promise<void> {
     quoteCurrencies?: string[];
     output?: string;
     config?: string;
+    refreshUniverseDays?: string;
     processes?: string;
     seriesWorkers?: string;
     fileWorkers?: string;
@@ -133,6 +138,8 @@ async function main(): Promise<void> {
     output,
     config: opts.config,
     defaultDays: days,
+    universeRefreshDays:
+      opts.refreshUniverseDays == null ? undefined : Number(opts.refreshUniverseDays),
     skipExisting: true,
     updateCoverageIndex: true,
     logCoverageProgress: true,

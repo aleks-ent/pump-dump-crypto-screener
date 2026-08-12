@@ -17,6 +17,7 @@ import {
   loadPumpMinScore,
   loadPumpMinDumpScore,
   loadPumpScanCacheEnabled,
+  loadPumpUniverseRefreshDays,
   resolveRepoPath,
 } from "@screener/core";
 import {
@@ -70,6 +71,7 @@ async function main(): Promise<void> {
   const minScore = await loadPumpMinScore();
   const minDumpScore = await loadPumpMinDumpScore();
   const scanCacheEnabled = await loadPumpScanCacheEnabled();
+  const universeRefreshDays = await loadPumpUniverseRefreshDays();
   const useScanCache = scanCacheEnabled;
 
   const dbConfig = await loadDatabaseConfig();
@@ -92,6 +94,7 @@ async function main(): Promise<void> {
       minScore,
       minDumpScore,
       useScanCache,
+      universeRefreshDays,
       opts,
       pumpRepo,
       subscriberRepo,
@@ -114,6 +117,7 @@ async function runMonitorPipeline(args: {
   minScore: number;
   minDumpScore: number;
   useScanCache: boolean;
+  universeRefreshDays: number;
   opts: {
     noTelegram?: boolean;
     cacheDir?: string;
@@ -123,12 +127,26 @@ async function runMonitorPipeline(args: {
   votingRepo: TelegramEpisodeVotingRepository;
   onNewPumpsCount: (count: number) => void;
 }): Promise<void> {
-  const { days, repoRoot, dataDir, eventsPath, minScore, minDumpScore, useScanCache, opts, pumpRepo, subscriberRepo, votingRepo, onNewPumpsCount } =
-    args;
+  const {
+    days,
+    repoRoot,
+    dataDir,
+    eventsPath,
+    minScore,
+    minDumpScore,
+    useScanCache,
+    universeRefreshDays,
+    opts,
+    pumpRepo,
+    subscriberRepo,
+    votingRepo,
+    onNewPumpsCount,
+  } = args;
 
   console.error(`Pump monitor: ${days}-day window (config.js pump.days)`);
   console.error(`Min score: ${minScore} pumps / ${minDumpScore} dumps (config.js)`);
   console.error(`Scan cache: ${useScanCache ? "enabled" : "disabled (config.js pump.scanCache)"}`);
+  console.error(`Symbol universe refresh: every ${universeRefreshDays} day(s)`);
   console.error(`Data dir: ${dataDir}`);
   console.error(
     `Scan worker threads: ${defaultWorkerConcurrency()} (auto-detected CPU cores)`,
@@ -137,7 +155,13 @@ async function runMonitorPipeline(args: {
   console.error("\n=== Step 1/3: refresh today's REST tails (live window) ===");
   const tailCode = await runCommand(
     "pnpm",
-    ["fetch:tail", "--", String(days)],
+    [
+      "fetch:tail",
+      "--",
+      String(days),
+      "--refresh-universe-days",
+      String(universeRefreshDays),
+    ],
     repoRoot,
   );
   if (tailCode !== 0) {
@@ -149,7 +173,13 @@ async function runMonitorPipeline(args: {
   console.error("\n=== Step 1b/3: fetch archives / fill gaps ===");
   const fetchCode = await runCommand(
     "pnpm",
-    ["fetch:all", "--", String(days)],
+    [
+      "fetch:all",
+      "--",
+      String(days),
+      "--refresh-universe-days",
+      String(universeRefreshDays),
+    ],
     repoRoot,
   );
   if (fetchCode !== 0) {

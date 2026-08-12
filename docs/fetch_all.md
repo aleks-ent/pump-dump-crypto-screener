@@ -16,7 +16,9 @@ length comes from `pump.days` in `config.js` (default `5`).
 - **Workers:** Binance 16, Bybit 8 per exchange (`--processes` overrides both when run manually)
 
 If `symbol_universe.json` is missing, the run discovers currently listed instruments from
-exchange APIs and writes the file before downloading.
+exchange APIs and writes the file before downloading. `pump:monitor` also rebuilds it when
+it reaches `pump.universeRefreshDays` old (default: 4 days), so newly listed and delisted
+instruments are picked up automatically.
 
 ## What it does, step by step
 

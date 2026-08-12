@@ -27,6 +27,10 @@ async function main(): Promise<void> {
     .option("--universe <path>", "Symbol universe JSON")
     .option("--output <dir>", "Output directory (default: data/market_stats)")
     .option("--config <path>", "YAML config (default: config/archives.yaml)")
+    .option(
+      "--refresh-universe-days <n>",
+      "Rebuild the symbol universe when it is at least N days old",
+    )
     .option("--workers <n>", "Parallel tail fetches per exchange (default: 12)")
     .option(
       "--exchange <name>",
@@ -41,6 +45,7 @@ async function main(): Promise<void> {
     universe?: string;
     output?: string;
     config?: string;
+    refreshUniverseDays?: string;
     workers?: string;
     exchange?: string[];
   }>();
@@ -62,6 +67,8 @@ async function main(): Promise<void> {
     output,
     config: opts.config,
     defaultDays: days,
+    universeRefreshDays:
+      opts.refreshUniverseDays == null ? undefined : Number(opts.refreshUniverseDays),
     skipDiscovery: false,
     skipExisting: false,
   });
