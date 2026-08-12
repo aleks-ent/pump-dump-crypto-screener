@@ -13,10 +13,10 @@ import {
 } from "./review-keyboard-client.js";
 
 export type PumpReviewCategory =
-  | "sustained_move"
   | "wick_spike"
+  | "weak_pump"
+  | "sustained_move"
   | "volume_only"
-  | "market_move"
   | "illiquid_noise"
   | "unclear";
 
@@ -90,24 +90,24 @@ const CATEGORIES: ReadonlyArray<{
   hint: string;
 }> = [
   {
-    value: "sustained_move",
-    label: "Sustained move",
-    hint: "Directional move with continuation",
-  },
-  {
     value: "wick_spike",
     label: "Wick spike",
     hint: "Brief spike without continuation",
   },
   {
+    value: "weak_pump",
+    label: "Weak pump",
+    hint: "Small upward move with limited continuation",
+  },
+  {
+    value: "sustained_move",
+    label: "Sustained move",
+    hint: "Directional move with continuation",
+  },
+  {
     value: "volume_only",
     label: "Volume only",
     hint: "Activity increased without a price move",
-  },
-  {
-    value: "market_move",
-    label: "Market move",
-    hint: "Moved with the broader market",
   },
   {
     value: "illiquid_noise",

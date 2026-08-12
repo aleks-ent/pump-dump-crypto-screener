@@ -16,6 +16,10 @@ describe("review annotation client", () => {
     expect(html).toContain('maxlength="4000"');
     expect(html).toContain("Save &amp; Next");
     expect(html).toContain("data-annotation-retry");
+    expect(html).toMatch(
+      /value="wick_spike"[\s\S]+value="weak_pump"[\s\S]+value="sustained_move"/,
+    );
+    expect(html).toContain("Small upward move with limited continuation");
   });
 
   it("renders and safely escapes an existing annotation for editing", () => {

@@ -2,10 +2,10 @@ import type { StoredPump } from "../pumps/types.js";
 import type { TelegramEpisodeVoteCounts } from "../telegram-episode-voting/repository.js";
 
 export const PUMP_CATEGORIES = [
-  "sustained_move",
   "wick_spike",
+  "weak_pump",
+  "sustained_move",
   "volume_only",
-  "market_move",
   "illiquid_noise",
   "unclear",
 ] as const;

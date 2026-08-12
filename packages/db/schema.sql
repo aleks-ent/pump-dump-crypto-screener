@@ -33,10 +33,10 @@ CREATE TABLE IF NOT EXISTS pump_annotations (
              CHECK (source IN ('human', 'ai')),
   category   TEXT NOT NULL
              CHECK (category IN (
-               'sustained_move',
                'wick_spike',
+               'weak_pump',
+               'sustained_move',
                'volume_only',
-               'market_move',
                'illiquid_noise',
                'unclear'
              )),
