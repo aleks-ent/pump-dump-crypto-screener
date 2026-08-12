@@ -102,7 +102,7 @@ workflow:
 - Inspect Telegram subscriber votes alongside a 1m or 5m OHLCV chart centered on the
   screener's detection time. Charts use local history when available and otherwise load
   the four-hour window from the event's public Binance or Bybit API.
-- Classify each event as a sustained move, wick spike, volume only, market move,
+- Classify each event as a wick spike, weak pump, sustained move, volume only,
   illiquid noise, or unclear; optionally record confidence and a comment.
 - Save and advance with keyboard shortcuts, revisit existing labels, track review
   progress, and export labeled datasets as JSON or CSV.

@@ -284,6 +284,9 @@ export function splitSqlStatements(sql: string): string[] {
 export async function applySchema(client: Client, schemaPath?: string): Promise<void> {
   const path = schemaPath ?? defaultSchemaPath();
   const statements = splitSqlStatements(readFileSync(path, "utf-8"));
+  const createPumpAnnotations = statements.find((statement) =>
+    /^CREATE TABLE IF NOT EXISTS pump_annotations\b/i.test(statement),
+  );
 
   for (const statement of statements) {
     if (/^CREATE TABLE/i.test(statement)) {
@@ -294,12 +297,54 @@ export async function applySchema(client: Client, schemaPath?: string): Promise<
   // Legacy DBs have pumps without episode_type; indexes must run after this.
   await migratePumpsEpisodeType(client);
   await migrateTelegramSubscribersState(client);
+  if (createPumpAnnotations != null) {
+    await updatePumpAnnotationCategoryConstraint(client, createPumpAnnotations);
+  }
 
   for (const statement of statements) {
     if (!/^CREATE TABLE/i.test(statement)) {
       await client.execute(statement);
     }
   }
+}
+
+async function updatePumpAnnotationCategoryConstraint(
+  client: Client,
+  createPumpAnnotations: string,
+): Promise<void> {
+  const table = await client.execute(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'pump_annotations'",
+  );
+  const tableSql = String(table.rows[0]?.sql ?? "");
+  if (!tableSql.includes("market_move")) return;
+
+  const createReplacement = createPumpAnnotations.replace(
+    /^CREATE TABLE IF NOT EXISTS/i,
+    "CREATE TABLE",
+  );
+  await client.batch(
+    [
+      "ALTER TABLE pump_annotations RENAME TO pump_annotations_market_move_legacy",
+      createReplacement,
+      `
+        INSERT INTO pump_annotations (
+          id, event_id, source, category, confidence, comment, created_at, updated_at
+        )
+        SELECT
+          id,
+          event_id,
+          source,
+          category,
+          confidence,
+          comment,
+          created_at,
+          updated_at
+        FROM pump_annotations_market_move_legacy
+      `.trim(),
+      "DROP TABLE pump_annotations_market_move_legacy",
+    ],
+    "write",
+  );
 }
 
 async function migratePumpsEpisodeType(client: Client): Promise<void> {

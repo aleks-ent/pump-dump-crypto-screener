@@ -85,15 +85,53 @@ Use exactly the following six categories in the MVP.
 
 ```ts
 export type PumpCategory =
-  | "sustained_move"
   | "wick_spike"
+  | "weak_pump"
+  | "sustained_move"
   | "volume_only"
-  | "market_move"
   | "illiquid_noise"
   | "unclear";
 ```
 
-### 4.1 `sustained_move`
+### 4.1 `wick_spike`
+
+A brief upward price spike occurred without meaningful continuation.
+
+Typical characteristics:
+
+- One or a few candles moved sharply upward.
+- Price quickly returned toward the pre-event level.
+- The move was dominated by a wick or short-lived impulse.
+- There was no sustained continuation.
+
+UI label:
+
+> Wick spike
+
+Keyboard shortcut:
+
+> `1`
+
+### 4.2 `weak_pump`
+
+A small but real upward price move occurred, with more structure than a wick spike but less magnitude or continuation than a sustained move.
+
+Typical characteristics:
+
+- Price moved upward by a modest amount.
+- The move showed some continuation or held above the initial level briefly.
+- The event was not dominated by a single transient wick.
+- The move remained too small or weak to qualify as sustained.
+
+UI label:
+
+> Weak pump
+
+Keyboard shortcut:
+
+> `2`
+
+### 4.3 `sustained_move`
 
 A meaningful directional price move occurred.
 
@@ -111,28 +149,9 @@ UI label:
 
 Keyboard shortcut:
 
-> `1`
+> `3`
 
-### 4.2 `wick_spike`
-
-A brief upward price spike occurred without meaningful continuation.
-
-Typical characteristics:
-
-- One or a few candles moved sharply upward.
-- Price quickly returned toward the pre-event level.
-- The move was dominated by a wick or short-lived impulse.
-- There was no sustained continuation.
-
-UI label:
-
-> Wick spike
-
-Keyboard shortcut:
-
-> `2`
-
-### 4.3 `volume_only`
+### 4.4 `volume_only`
 
 Trading activity increased, but the price did not produce a meaningful directional move.
 
@@ -149,27 +168,7 @@ UI label:
 
 Keyboard shortcut:
 
-> `3`
-
-### 4.4 `market_move`
-
-The symbol moved, but the move appeared to be part of a broader market or sector move rather than an independent pump.
-
-Typical characteristics:
-
-- BTC, ETH, or many altcoins moved at the same time.
-- The symbol broadly followed the market.
-- The move was not meaningfully idiosyncratic.
-
-UI label:
-
-> Market move
-
-Keyboard shortcut:
-
 > `4`
-
-The application does not need to prove this classification automatically. This is a manual judgment.
 
 ### 4.5 `illiquid_noise`
 
@@ -395,10 +394,10 @@ Optionally display category counts.
 
 ```json
 {
-  "sustained_move": 61,
   "wick_spike": 48,
+  "weak_pump": 17,
+  "sustained_move": 61,
   "volume_only": 55,
-  "market_move": 17,
   "illiquid_noise": 22,
   "unclear": 10
 }
@@ -539,10 +538,10 @@ Each option must show:
 Example:
 
 ```text
-[1] Sustained move
-[2] Wick spike
-[3] Volume only
-[4] Market move
+[1] Wick spike
+[2] Weak pump
+[3] Sustained move
+[4] Volume only
 [5] Illiquid noise
 [6] Unclear
 ```
@@ -614,10 +613,10 @@ Keyboard support is required.
 
 | Key | Action |
 |---|---|
-| `1` | Select `sustained_move` |
-| `2` | Select `wick_spike` |
-| `3` | Select `volume_only` |
-| `4` | Select `market_move` |
+| `1` | Select `wick_spike` |
+| `2` | Select `weak_pump` |
+| `3` | Select `sustained_move` |
+| `4` | Select `volume_only` |
 | `5` | Select `illiquid_noise` |
 | `6` | Select `unclear` |
 | `Enter` | Save and open next event |
@@ -756,10 +755,10 @@ Validate `category` in application code or with a database constraint.
 Allowed values:
 
 ```text
-sustained_move
 wick_spike
+weak_pump
+sustained_move
 volume_only
-market_move
 illiquid_noise
 unclear
 ```
@@ -883,10 +882,10 @@ Suggested response:
   "unclear": 10,
   "reviewedPercentage": 31.1,
   "categories": {
-    "sustained_move": 61,
     "wick_spike": 48,
+    "weak_pump": 17,
+    "sustained_move": 61,
     "volume_only": 55,
-    "market_move": 17,
     "illiquid_noise": 22,
     "unclear": 10
   }

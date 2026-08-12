@@ -361,10 +361,10 @@ export class PumpReviewRepository {
       reviewedPercentage:
         total === 0 ? 0 : Math.round(((reviewed + unclear) / total) * 1_000) / 10,
       categories: {
-        sustained_move: Number(row?.category_sustained_move ?? 0),
         wick_spike: Number(row?.category_wick_spike ?? 0),
+        weak_pump: Number(row?.category_weak_pump ?? 0),
+        sustained_move: Number(row?.category_sustained_move ?? 0),
         volume_only: Number(row?.category_volume_only ?? 0),
-        market_move: Number(row?.category_market_move ?? 0),
         illiquid_noise: Number(row?.category_illiquid_noise ?? 0),
         unclear: Number(row?.category_unclear ?? 0),
       },

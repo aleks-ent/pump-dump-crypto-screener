@@ -40,10 +40,10 @@ function sampleEpisode(
 describe("pump review types", () => {
   it("defines and validates exactly the review taxonomy", () => {
     expect(PUMP_CATEGORIES).toEqual([
-      "sustained_move",
       "wick_spike",
+      "weak_pump",
+      "sustained_move",
       "volume_only",
-      "market_move",
       "illiquid_noise",
       "unclear",
     ]);
@@ -175,7 +175,7 @@ describe("PumpReviewRepository", () => {
 
   it("keeps future AI annotations independent from the current human label", async () => {
     const human = await reviewRepo.upsertAnnotation(
-      { eventId: eventIds[0]!, category: "market_move" },
+      { eventId: eventIds[0]!, category: "weak_pump" },
       "2026-08-01T10:00:00.000Z",
     );
     const ai = await reviewRepo.upsertAnnotation(
@@ -283,10 +283,10 @@ describe("PumpReviewRepository", () => {
       unclear: 1,
       reviewedPercentage: 50,
       categories: {
-        sustained_move: 1,
         wick_spike: 0,
+        weak_pump: 0,
+        sustained_move: 1,
         volume_only: 0,
-        market_move: 0,
         illiquid_noise: 0,
         unclear: 1,
       },

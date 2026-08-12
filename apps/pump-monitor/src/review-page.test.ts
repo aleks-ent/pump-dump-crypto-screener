@@ -89,17 +89,17 @@ describe("renderReviewPage", () => {
       events: [
         event({
           status: "reviewed",
-          category: "market_move",
+          category: "weak_pump",
           confidence: "medium",
-          comment: "Tracked the broader BTC move.",
+          comment: "Small pump with limited follow-through.",
         }),
       ],
     });
 
     expect(html).toContain('data-annotation-state="ready"');
-    expect(html).toContain('value="market_move" checked');
+    expect(html).toContain('value="weak_pump" checked');
     expect(html).toContain('value="medium" selected');
-    expect(html).toContain("Tracked the broader BTC move.");
+    expect(html).toContain("Small pump with limited follow-through.");
     expect(html).toContain("Editing saved annotation.");
     expect(html).toContain("/api/pump-events/");
     expect(html).toContain("method: 'PUT'");

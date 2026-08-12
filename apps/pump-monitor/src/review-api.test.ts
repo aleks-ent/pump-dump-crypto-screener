@@ -91,7 +91,7 @@ class FakeReviewRepository implements ReviewRepositoryLike {
         sustained_move: 0,
         wick_spike: 0,
         volume_only: 0,
-        market_move: 0,
+        weak_pump: 0,
         illiquid_noise: 0,
         unclear: 0,
       },

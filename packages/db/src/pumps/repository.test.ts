@@ -68,6 +68,78 @@ describe("applySchema", () => {
     expect(newPumps).toHaveLength(1);
     expect(newPumps[0]!.episodeType).toBe("pump");
   });
+
+  it("updates the annotation category constraint without rewriting stored labels", async () => {
+    const client = createMemoryDbClient();
+    await applySchema(client);
+    const repo = new PumpRepository(client);
+    const { newPumps } = await repo.upsertPumpEpisodes([
+      samplePump("SMALL/USDT", Date.parse("2026-07-05T12:00:00.000Z")),
+    ]);
+    const eventId = newPumps[0]!.index;
+
+    await client.execute("DROP TABLE pump_annotations");
+    await client.execute(`
+      CREATE TABLE pump_annotations (
+        id         TEXT PRIMARY KEY NOT NULL,
+        event_id   TEXT NOT NULL,
+        source     TEXT NOT NULL DEFAULT 'human'
+                   CHECK (source IN ('human', 'ai')),
+        category   TEXT NOT NULL
+                   CHECK (category IN (
+                     'sustained_move',
+                     'wick_spike',
+                     'volume_only',
+                     'market_move',
+                     'illiquid_noise',
+                     'unclear'
+                   )),
+        confidence TEXT,
+        comment    TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (event_id, source),
+        FOREIGN KEY (event_id) REFERENCES pumps(id) ON DELETE CASCADE
+      )
+    `);
+    await client.execute({
+      sql: `
+        INSERT INTO pump_annotations (
+          id, event_id, source, category, confidence, comment, created_at, updated_at
+        ) VALUES (?, ?, 'human', 'wick_spike', 'medium', ?, ?, ?)
+      `,
+      args: [
+        "legacy-annotation",
+        eventId,
+        "Small move.",
+        "2026-08-01T10:00:00.000Z",
+        "2026-08-01T10:00:00.000Z",
+      ],
+    });
+
+    await applySchema(client);
+
+    const migrated = await client.execute(
+      "SELECT id, category, comment FROM pump_annotations",
+    );
+    expect(migrated.rows).toEqual([
+      {
+        id: "legacy-annotation",
+        category: "wick_spike",
+        comment: "Small move.",
+      },
+    ]);
+    await client.execute(
+      "UPDATE pump_annotations SET category = 'weak_pump'",
+    );
+    const updated = await client.execute(
+      "SELECT category FROM pump_annotations",
+    );
+    expect(updated.rows[0]?.category).toBe("weak_pump");
+    await expect(
+      client.execute("UPDATE pump_annotations SET category = 'market_move'"),
+    ).rejects.toThrow();
+  });
 });
 
 describe("PumpRepository", () => {
