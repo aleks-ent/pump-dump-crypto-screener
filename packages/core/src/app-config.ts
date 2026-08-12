@@ -15,6 +15,8 @@ export interface AppConfig {
   pump?: {
     /** Lookback calendar days for fetch:all + scan (default 5). */
     days?: number;
+    /** Rebuild the listed-symbol universe after this many days (default 4). */
+    universeRefreshDays?: number;
     minScore?: number;
     /** Minimum score for distribution_or_fade (dump) alerts (default 55). */
     minDumpScore?: number;
@@ -95,6 +97,23 @@ export function resolvePumpDays(cfg: AppConfig): number {
 
 export async function loadPumpDays(configPath?: string): Promise<number> {
   return resolvePumpDays(await loadAppConfig(configPath));
+}
+
+const DEFAULT_PUMP_UNIVERSE_REFRESH_DAYS = 4;
+
+export function resolvePumpUniverseRefreshDays(cfg: AppConfig): number {
+  const raw = cfg.pump?.universeRefreshDays ?? DEFAULT_PUMP_UNIVERSE_REFRESH_DAYS;
+  const days = Number(raw);
+  if (!Number.isFinite(days) || days < 1) {
+    throw new Error(
+      `Invalid pump.universeRefreshDays in config.js — must be a positive number (got ${String(raw)})`,
+    );
+  }
+  return days;
+}
+
+export async function loadPumpUniverseRefreshDays(configPath?: string): Promise<number> {
+  return resolvePumpUniverseRefreshDays(await loadAppConfig(configPath));
 }
 
 const DEFAULT_PUMP_SCAN_CACHE = true;

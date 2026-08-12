@@ -5,6 +5,7 @@ import {
   resolvePumpMinDumpScore,
   resolvePumpMinScore,
   resolvePumpScanCache,
+  resolvePumpUniverseRefreshDays,
   type AppConfig,
 } from "./app-config.js";
 
@@ -49,6 +50,25 @@ describe("resolvePumpDays", () => {
   it("rejects invalid values", () => {
     expect(() => resolvePumpDays({ pump: { days: 0 } })).toThrow(/pump\.days/);
     expect(() => resolvePumpDays({ pump: { days: -1 } })).toThrow(/pump\.days/);
+  });
+});
+
+describe("resolvePumpUniverseRefreshDays", () => {
+  it("defaults to 4 when pump.universeRefreshDays is omitted", () => {
+    expect(resolvePumpUniverseRefreshDays({})).toBe(4);
+  });
+
+  it("reads pump.universeRefreshDays", () => {
+    expect(resolvePumpUniverseRefreshDays({ pump: { universeRefreshDays: 7 } })).toBe(7);
+  });
+
+  it("rejects invalid values", () => {
+    expect(() =>
+      resolvePumpUniverseRefreshDays({ pump: { universeRefreshDays: 0 } }),
+    ).toThrow(/pump\.universeRefreshDays/);
+    expect(() =>
+      resolvePumpUniverseRefreshDays({ pump: { universeRefreshDays: Number.NaN } }),
+    ).toThrow(/pump\.universeRefreshDays/);
   });
 });
 

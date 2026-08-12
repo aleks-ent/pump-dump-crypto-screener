@@ -143,6 +143,11 @@ Each PM2-driven run is an end-to-end pipeline:
 2. **Scan** — pump/dump detection; output `data/market_stats/reports/pump_events.ndjson`.
 3. **Persist + alert** — upsert pump episodes to Turso; Telegram message per **new** pump (`coin|pump_start_utc`).
 
+The exchange symbol universe is re-discovered when
+`data/market_stats/reports/symbol_universe.json` reaches
+`pump.universeRefreshDays` old (default: 4 days). This adds new listings and removes
+delisted instruments from subsequent fetches and scans.
+
 On disk: `data/market_stats/` (`archives/`, `api_fallback/raw/`, `reports/`). Cached series are skipped on repeat runs. Nothing is ever pruned automatically — see [Disk usage and retention](#disk-usage-and-retention).
 
 Alerts sent to `classifierTelegramChatId` have **Pump | Dump | None** buttons. `pump-bot` verifies the callback came from that chat before writing `pumps.classification`; other subscribers receive the same alerts without classification buttons.

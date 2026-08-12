@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import pLimit from "p-limit";
 import {
@@ -57,6 +57,8 @@ export interface ArchiveRunOptions {
   output: string;
   config?: string;
   defaultDays?: number;
+  /** Rebuild symbol_universe.json when its mtime is at least this many days old. */
+  universeRefreshDays?: number;
   skipDiscovery?: boolean;
   skipExisting?: boolean;
   /** Persist coverage_index.json after classifying tasks (orchestrator only). */
@@ -126,7 +128,25 @@ export function cooldownDirFor(baseDir: string): string {
   return join(baseDir, "reports", ".cooldowns");
 }
 
-/** Discover currently listed instruments and write `symbol_universe.json` when absent. */
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function symbolUniverseNeedsRefresh(
+  universePath: string,
+  refreshAfterDays?: number,
+  nowMs = Date.now(),
+): boolean {
+  if (
+    refreshAfterDays != null &&
+    (!Number.isFinite(refreshAfterDays) || refreshAfterDays < 1)
+  ) {
+    throw new Error("universeRefreshDays must be a positive number");
+  }
+  if (!existsSync(universePath)) return true;
+  if (refreshAfterDays == null) return false;
+  return nowMs - statSync(universePath).mtimeMs >= refreshAfterDays * DAY_MS;
+}
+
+/** Discover listed instruments and write `symbol_universe.json` when missing or stale. */
 export async function ensureSymbolUniverse(
   universePath: string,
   opts: {
@@ -134,17 +154,24 @@ export async function ensureSymbolUniverse(
     quoteCurrencies: Set<string>;
     adapters: Record<string, ExchangeAdapter>;
     client: HttpClient;
+    refreshAfterDays?: number;
+    nowMs?: number;
     log?: (msg: string) => void;
   },
 ): Promise<boolean> {
-  if (existsSync(universePath)) return false;
+  if (!symbolUniverseNeedsRefresh(universePath, opts.refreshAfterDays, opts.nowMs)) {
+    return false;
+  }
   const log = opts.log ?? (() => undefined);
-  log(`Symbol universe missing at ${universePath}; discovering listed instruments...`);
+  const reason = existsSync(universePath) ? "stale" : "missing";
+  log(`Symbol universe ${reason} at ${universePath}; discovering listed instruments...`);
   const discovered = await discoverForExchanges(opts.adapters, opts.client, opts.exchanges);
   const filtered = applyUniverseFilters(discovered, opts.quoteCurrencies);
   const rows = buildSymbolUniverse(filtered);
   mkdirSync(dirname(universePath), { recursive: true });
-  writeFileSync(universePath, JSON.stringify(rows, null, 2), "utf-8");
+  const tempPath = `${universePath}.${process.pid}.tmp`;
+  writeFileSync(tempPath, JSON.stringify(rows, null, 2), "utf-8");
+  renameSync(tempPath, universePath);
   log(`Wrote symbol universe (${rows.length} entries) → ${universePath}`);
   return true;
 }
@@ -180,6 +207,7 @@ export async function prepareArchiveRun(opts: ArchiveRunOptions): Promise<Archiv
     quoteCurrencies,
     adapters,
     client: mainClient,
+    refreshAfterDays: opts.universeRefreshDays,
     log: (msg) => console.log(msg),
   });
   const universe = filterUniverseByQuote(loadUniverse(universePath), quoteCurrencies);

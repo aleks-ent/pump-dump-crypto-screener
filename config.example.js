@@ -25,6 +25,8 @@ export default {
   },
   pump: {
     days: 5,
+    // Re-discover exchange listings and rebuild symbol_universe.json every 4 days.
+    universeRefreshDays: 4,
     minScore: 80,
     scanCache: true,
   },
