@@ -69,7 +69,7 @@ describe("applySchema", () => {
     expect(newPumps[0]!.episodeType).toBe("pump");
   });
 
-  it("migrates existing market-move annotations to weak pumps", async () => {
+  it("updates the annotation category constraint without rewriting stored labels", async () => {
     const client = createMemoryDbClient();
     await applySchema(client);
     const repo = new PumpRepository(client);
@@ -106,7 +106,7 @@ describe("applySchema", () => {
       sql: `
         INSERT INTO pump_annotations (
           id, event_id, source, category, confidence, comment, created_at, updated_at
-        ) VALUES (?, ?, 'human', 'market_move', 'medium', ?, ?, ?)
+        ) VALUES (?, ?, 'human', 'wick_spike', 'medium', ?, ?, ?)
       `,
       args: [
         "legacy-annotation",
@@ -125,10 +125,17 @@ describe("applySchema", () => {
     expect(migrated.rows).toEqual([
       {
         id: "legacy-annotation",
-        category: "weak_pump",
+        category: "wick_spike",
         comment: "Small move.",
       },
     ]);
+    await client.execute(
+      "UPDATE pump_annotations SET category = 'weak_pump'",
+    );
+    const updated = await client.execute(
+      "SELECT category FROM pump_annotations",
+    );
+    expect(updated.rows[0]?.category).toBe("weak_pump");
     await expect(
       client.execute("UPDATE pump_annotations SET category = 'market_move'"),
     ).rejects.toThrow();

@@ -298,7 +298,7 @@ export async function applySchema(client: Client, schemaPath?: string): Promise<
   await migratePumpsEpisodeType(client);
   await migrateTelegramSubscribersState(client);
   if (createPumpAnnotations != null) {
-    await migrateWeakPumpCategory(client, createPumpAnnotations);
+    await updatePumpAnnotationCategoryConstraint(client, createPumpAnnotations);
   }
 
   for (const statement of statements) {
@@ -308,7 +308,7 @@ export async function applySchema(client: Client, schemaPath?: string): Promise<
   }
 }
 
-async function migrateWeakPumpCategory(
+async function updatePumpAnnotationCategoryConstraint(
   client: Client,
   createPumpAnnotations: string,
 ): Promise<void> {
@@ -334,7 +334,7 @@ async function migrateWeakPumpCategory(
           id,
           event_id,
           source,
-          CASE WHEN category = 'market_move' THEN 'weak_pump' ELSE category END,
+          category,
           confidence,
           comment,
           created_at,
