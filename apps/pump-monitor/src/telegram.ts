@@ -267,11 +267,14 @@ export function formatVotedEpisodeAlertMessage(
   voteCounts: TelegramEpisodeVoteCounts = ZERO_VOTE_COUNTS,
 ): string {
   const title = episode.episodeType === "dump" ? "New dump detected" : "New pump detected";
-  return [
+  const lines = [
     `<b>${title}</b>`,
     formatEpisodeBlock({ ...episode, classification: null }),
-    formatEpisodeVoteStats(voteCounts),
-  ].join("\n");
+  ];
+  if (voteCounts.pump + voteCounts.dump + voteCounts.none > 0) {
+    lines.push(formatEpisodeVoteStats(voteCounts));
+  }
+  return lines.join("\n");
 }
 
 function formatPumpStatsHeader(

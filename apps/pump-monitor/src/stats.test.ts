@@ -92,11 +92,13 @@ describe("PumpRepository list + telegram formatting", () => {
     expect(keyboard.inline_keyboard[0]).toHaveLength(3);
   });
 
-  it("formats voted alert messages with compact emoji stats", async () => {
+  it("shows compact vote stats only after a vote is submitted", async () => {
     const { newPumps } = await repo.upsertPumpEpisodes([
       samplePump("WLD/USDT", Date.parse("2026-06-07T00:50:00.000Z"), 100),
     ]);
-    const message = formatVotedEpisodeAlertMessage(newPumps[0]!, {
+    const episode = newPumps[0]!;
+    const unvotedMessage = formatVotedEpisodeAlertMessage(episode);
+    const votedMessage = formatVotedEpisodeAlertMessage(episode, {
       pump: 2,
       dump: 1,
       none: 0,
@@ -105,8 +107,9 @@ describe("PumpRepository list + telegram formatting", () => {
     expect(formatEpisodeVoteStats({ pump: 2, dump: 1, none: 0 })).toBe(
       "Votes: 📈 2 · 📉 1 · ⚪ 0",
     );
-    expect(message).toContain("New pump detected");
-    expect(message).toContain("Votes: 📈 2 · 📉 1 · ⚪ 0");
+    expect(unvotedMessage).toContain("New pump detected");
+    expect(unvotedMessage).not.toContain("Votes:");
+    expect(votedMessage).toContain("Votes: 📈 2 · 📉 1 · ⚪ 0");
   });
 });
 
@@ -335,7 +338,7 @@ describe("Telegram message delivery", () => {
     ) as Record<string, unknown>;
     expect(publicBody.reply_markup).toEqual(buildClassificationKeyboard(pump.index));
     expect(adminBody.reply_markup).toEqual(buildClassificationKeyboard(pump.index));
-    expect(String(publicBody.text)).toContain("Votes: 📈 0 · 📉 0 · ⚪ 0");
+    expect(String(publicBody.text)).not.toContain("Votes:");
   });
 
   it("sends every event individually even above the old detail limit", async () => {
@@ -369,7 +372,7 @@ describe("Telegram message delivery", () => {
     const bodies = fetchMock.mock.calls.map((call) =>
       JSON.parse(String((call[1] as RequestInit).body)) as Record<string, unknown>,
     );
-    expect(bodies.every((body) => String(body.text).includes("Votes:"))).toBe(true);
+    expect(bodies.every((body) => !String(body.text).includes("Votes:"))).toBe(true);
     expect(bodies.some((body) => String(body.text).includes("Many new episodes"))).toBe(false);
   });
 });
