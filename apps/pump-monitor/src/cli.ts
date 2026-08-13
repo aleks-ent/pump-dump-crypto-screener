@@ -36,7 +36,10 @@ import { loadTelegramConfig, sendEpisodeAlerts } from "./telegram.js";
 import {
   resolveTelegramAlertChatIds,
 } from "./telegram-subscribers.js";
-import { filterPumpsPastCooldown } from "./alert-cooldown.js";
+import {
+  filterEpisodesSinceAlertCutoff,
+  filterPumpsPastCooldown,
+} from "./alert-cooldown.js";
 
 function loadPumpCandidates(path: string): PumpCandidate[] {
   const content = readFileSync(path, "utf-8");
@@ -82,7 +85,15 @@ async function main(): Promise<void> {
   const votingRepo = new TelegramEpisodeVotingRepository(client);
   await pumpRepo.applySchema();
 
-  const runId = await runRepo.startRun(new Date().toISOString());
+  const runStartedAt = new Date();
+  const previousSuccessfulRun = await runRepo.getLatestSuccessfulRun();
+  const previousRunStartedMs = previousSuccessfulRun
+    ? Date.parse(previousSuccessfulRun.startedAt)
+    : Number.NaN;
+  const alertCutoffMs = Number.isFinite(previousRunStartedMs)
+    ? previousRunStartedMs
+    : runStartedAt.getTime();
+  const runId = await runRepo.startRun(runStartedAt.toISOString());
   let newPumpsCount: number | null = null;
 
   try {
@@ -95,6 +106,7 @@ async function main(): Promise<void> {
       minDumpScore,
       useScanCache,
       universeRefreshDays,
+      alertCutoffMs,
       opts,
       pumpRepo,
       subscriberRepo,
@@ -118,6 +130,7 @@ async function runMonitorPipeline(args: {
   minDumpScore: number;
   useScanCache: boolean;
   universeRefreshDays: number;
+  alertCutoffMs: number;
   opts: {
     noTelegram?: boolean;
     cacheDir?: string;
@@ -136,6 +149,7 @@ async function runMonitorPipeline(args: {
     minDumpScore,
     useScanCache,
     universeRefreshDays,
+    alertCutoffMs,
     opts,
     pumpRepo,
     subscriberRepo,
@@ -147,6 +161,9 @@ async function runMonitorPipeline(args: {
   console.error(`Min score: ${minScore} pumps / ${minDumpScore} dumps (config.js)`);
   console.error(`Scan cache: ${useScanCache ? "enabled" : "disabled (config.js pump.scanCache)"}`);
   console.error(`Symbol universe refresh: every ${universeRefreshDays} day(s)`);
+  console.error(
+    `Telegram alert watermark: episodes ending at or after ${new Date(alertCutoffMs).toISOString()}`,
+  );
   console.error(`Data dir: ${dataDir}`);
   console.error(
     `Scan worker threads: ${defaultWorkerConcurrency()} (auto-detected CPU cores)`,
@@ -233,22 +250,32 @@ async function runMonitorPipeline(args: {
     `Screener DB episodes: ${existingCount} existing → ${totalCount} total (${newPumps.length} new pump(s), ${newDumps.length} new dump(s))`,
   );
 
+  const { alertable: currentPumps, historical: historicalPumps } =
+    filterEpisodesSinceAlertCutoff(newPumps, alertCutoffMs);
+  const { alertable: currentDumps, historical: historicalDumps } =
+    filterEpisodesSinceAlertCutoff(newDumps, alertCutoffMs);
+  if (historicalPumps.length > 0 || historicalDumps.length > 0) {
+    console.error(
+      `Watermark: suppressed Telegram alerts for ${historicalPumps.length} historical pump(s) and ${historicalDumps.length} historical dump(s) ending before ${new Date(alertCutoffMs).toISOString()}; episodes remain stored for review`,
+    );
+  }
+
   const { alertable: pumpsToAlert, suppressed: cooldownSuppressed } =
-    filterPumpsPastCooldown(newPumps, recentPumpStarts);
+    filterPumpsPastCooldown(currentPumps, recentPumpStarts);
   if (cooldownSuppressed.length > 0) {
     console.error(
       `Cooldown: suppressed ${cooldownSuppressed.length} pump alert(s) within 4h of a prior alert on the same coin`,
     );
   }
 
-  if (pumpsToAlert.length === 0 && newDumps.length === 0) {
-    console.error("No new pumps or dumps to alert — Telegram not sent");
+  if (pumpsToAlert.length === 0 && currentDumps.length === 0) {
+    console.error("No current new pumps or dumps to alert — Telegram not sent");
     return;
   }
 
   if (opts.noTelegram) {
     console.error(
-      `Skipping Telegram (--no-telegram); ${pumpsToAlert.length} pump(s) would alert, ${newDumps.length} new dump(s) stored`,
+      `Skipping Telegram (--no-telegram); ${pumpsToAlert.length} pump(s) would alert, ${currentDumps.length} dump(s) would alert`,
     );
     return;
   }
@@ -278,7 +305,7 @@ async function runMonitorPipeline(args: {
       const sentAlerts = await sendEpisodeAlerts(
         { ...telegram, chatId },
         pumpsToAlert,
-        newDumps,
+        currentDumps,
         {
           votingButtons: true,
           onSent: async (alert) => {
@@ -327,7 +354,7 @@ async function runMonitorPipeline(args: {
   }
 
   console.error(
-    `Telegram alerts sent to ${deliveredChats}/${recipientIds.length} recipient(s) for ${pumpsToAlert.length} new pump(s) and ${newDumps.length} new dump(s) (${messageCount} message${messageCount === 1 ? "" : "s"}${failedChats > 0 ? `, ${failedChats} failed chat(s)` : ""})`,
+    `Telegram alerts sent to ${deliveredChats}/${recipientIds.length} recipient(s) for ${pumpsToAlert.length} new pump(s) and ${currentDumps.length} new dump(s) (${messageCount} message${messageCount === 1 ? "" : "s"}${failedChats > 0 ? `, ${failedChats} failed chat(s)` : ""})`,
   );
 }
 

@@ -141,7 +141,7 @@ Each PM2-driven run is an end-to-end pipeline:
 
 1. **Download** — last `pump.days` of 1m/5m candles from **Binance and Bybit** (archives + REST fallback). See [docs/fetch_all.md](docs/fetch_all.md).
 2. **Scan** — pump/dump detection; output `data/market_stats/reports/pump_events.ndjson`.
-3. **Persist + alert** — upsert pump episodes to Turso; Telegram message per **new** pump (`coin|pump_start_utc`).
+3. **Persist + alert** — upsert pump episodes to Turso; Telegram message per **new, current** pump (`coin|pump_start_utc`). Episodes ending before the previous successful monitor cycle began are historical backfill: they are stored for `/review` but are not broadcast as fresh alerts.
 
 The exchange symbol universe is re-discovered when
 `data/market_stats/reports/symbol_universe.json` reaches

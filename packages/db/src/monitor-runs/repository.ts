@@ -55,6 +55,25 @@ export class MonitorRunRepository {
     });
   }
 
+  async getLatestSuccessfulRun(): Promise<MonitorRunRecord | null> {
+    const result = await this.client.execute(`
+      SELECT id, started_at, ended_at, new_pumps_count
+      FROM monitor_runs
+      WHERE ended_at IS NOT NULL AND new_pumps_count IS NOT NULL
+      ORDER BY started_at DESC
+      LIMIT 1
+    `.trim());
+    const row = result.rows[0];
+    if (!row) return null;
+    const record = row as Record<string, unknown>;
+    return {
+      id: Number(record.id),
+      startedAt: String(record.started_at),
+      endedAt: String(record.ended_at),
+      newPumpsCount: Number(record.new_pumps_count),
+    };
+  }
+
   async getRun(id: number): Promise<MonitorRunRecord | null> {
     const result = await this.client.execute({
       sql: `

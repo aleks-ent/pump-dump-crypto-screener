@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StoredPump } from "@screener/db";
 import {
+  filterEpisodesSinceAlertCutoff,
   filterPumpsPastCooldown,
   PUMP_ALERT_COOLDOWN_MS,
 } from "./alert-cooldown.js";
@@ -29,6 +30,53 @@ function storedPump(coin: string, startMs: number): StoredPump {
     classification: null,
   };
 }
+
+describe("filterEpisodesSinceAlertCutoff", () => {
+  const previousRunStartedMs = Date.parse("2026-08-12T23:55:13.579Z");
+
+  it("keeps episodes that ended after the previous monitor cycle began", () => {
+    const current = storedPump("CURRENT/USDT", previousRunStartedMs);
+
+    const filtered = filterEpisodesSinceAlertCutoff(
+      [current],
+      previousRunStartedMs,
+    );
+
+    expect(filtered.alertable).toEqual([current]);
+    expect(filtered.historical).toEqual([]);
+  });
+
+  it("suppresses VELODROME-style historical discoveries from a later scan", () => {
+    const historical = storedPump(
+      "VELODROME/USDT",
+      Date.parse("2026-08-10T11:15:00.000Z"),
+    );
+
+    const filtered = filterEpisodesSinceAlertCutoff(
+      [historical],
+      previousRunStartedMs,
+    );
+
+    expect(filtered.alertable).toEqual([]);
+    expect(filtered.historical).toEqual([historical]);
+  });
+
+  it("applies the same monitor watermark to pump and dump alerts", () => {
+    const currentPump = storedPump("PUMP/USDT", previousRunStartedMs + 60_000);
+    const historicalDump = {
+      ...storedPump("DUMP/USDT", previousRunStartedMs - 60 * 60 * 1000),
+      episodeType: "dump" as const,
+    };
+
+    const filtered = filterEpisodesSinceAlertCutoff(
+      [currentPump, historicalDump],
+      previousRunStartedMs,
+    );
+
+    expect(filtered.alertable).toEqual([currentPump]);
+    expect(filtered.historical).toEqual([historicalDump]);
+  });
+});
 
 describe("filterPumpsPastCooldown", () => {
   it("allows first alert on a coin", () => {
