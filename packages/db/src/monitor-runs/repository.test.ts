@@ -54,4 +54,25 @@ describe("MonitorRunRepository", () => {
     const runs = await repo.listRecentRuns(5);
     expect(runs.map((run) => run.id)).toEqual([second, first]);
   });
+
+  it("returns the latest successful run as the alert watermark", async () => {
+    const successful = await repo.startRun("2026-08-12T23:55:13.579Z");
+    await repo.finishRun(successful, "2026-08-13T00:04:01.623Z", 0);
+    const failed = await repo.startRun("2026-08-13T00:04:04.459Z");
+    await repo.finishRun(failed, "2026-08-13T00:08:00.000Z", null);
+
+    expect(await repo.getLatestSuccessfulRun()).toEqual({
+      id: successful,
+      startedAt: "2026-08-12T23:55:13.579Z",
+      endedAt: "2026-08-13T00:04:01.623Z",
+      newPumpsCount: 0,
+    });
+  });
+
+  it("returns no alert watermark before the first successful run", async () => {
+    const failed = await repo.startRun("2026-08-13T00:04:04.459Z");
+    await repo.finishRun(failed, "2026-08-13T00:08:00.000Z", null);
+
+    expect(await repo.getLatestSuccessfulRun()).toBeNull();
+  });
 });
