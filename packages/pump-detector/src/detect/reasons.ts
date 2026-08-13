@@ -36,6 +36,9 @@ export function buildReasons(f: FeatureSnapshot, confirmedExchanges: number): st
   if (f.accumulationBeforePump) {
     reasons.push("Quiet accumulation detected before the impulse");
   }
+  if (f.calmBeforePump) {
+    reasons.push("Calm, low-oscillation market detected for 2 hours before the impulse");
+  }
   if (f.pullbacksAreBought) {
     reasons.push("Shallow pullbacks with price holding above EMA20");
   }

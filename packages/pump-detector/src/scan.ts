@@ -3,7 +3,11 @@ import { loadSeries } from "./load/series.js";
 import { evaluateFeatures } from "./features/evaluate.js";
 import { computeScore, confidenceFromScore } from "./detect/score.js";
 import { classifyPhase } from "./detect/phases.js";
-import { phaseMeetsMinScore, pumpPhaseMeetsQualityGates } from "./detect/threshold.js";
+import {
+  phaseMeetsMinScore,
+  pumpPhaseMeetsCalmPrePumpGate,
+  pumpPhaseMeetsQualityGates,
+} from "./detect/threshold.js";
 import { filterPumpCandidatesByMinConsecutiveBars } from "./detect/run-length.js";
 import { buildReasons } from "./detect/reasons.js";
 import {
@@ -74,6 +78,12 @@ function toCandidate(
       ema20: f.ema20,
       ema50: f.ema50,
       ema20Slope: f.ema20Slope,
+      calmBeforePump: f.calmBeforePump,
+      prePumpRangePct: f.prePumpRangePct,
+      prePumpPathPct: f.prePumpPathPct,
+      prePumpMedianRangeRatio: f.prePumpMedianRangeRatio,
+      prePumpMaxRangeRatio: f.prePumpMaxRangeRatio,
+      prePumpMedianVolumeRatio: f.prePumpMedianVolumeRatio,
     },
     reasons: buildReasons(f, confirmedExchanges),
   };
@@ -148,6 +158,15 @@ export function scanInstrumentGroup(
       if (!REPORTABLE_PHASES.has(phase)) continue;
       if (phase === "ignore" || !phaseMeetsMinScore(phase, score, minScore, minDumpScore)) continue;
       if (!pumpPhaseMeetsQualityGates(phase, f.priceChangeLast6, minScore)) continue;
+      if (
+        !pumpPhaseMeetsCalmPrePumpGate(
+          phase,
+          f.calmBeforePump,
+          Boolean(opts.requireCalmPrePump),
+        )
+      ) {
+        continue;
+      }
 
       hits.push({
         barIndex: i,

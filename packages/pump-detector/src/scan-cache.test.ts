@@ -21,6 +21,7 @@ const scanParams: ScanParams = {
   minDumpScore: 55,
   liquidityThreshold: 100_000,
   exchanges: ["binance"],
+  requireCalmPrePump: false,
 };
 
 const fingerprint: ExchangeDataFingerprint[] = [
@@ -107,6 +108,13 @@ describe("shouldSkipScan", () => {
   it("invalidates on exchanges filter mismatch", () => {
     const cache = makeCache({
       scanParams: { ...scanParams, exchanges: ["bybit"] },
+    });
+    expect(shouldSkipScan(cache, baseOpts)).toBe(false);
+  });
+
+  it("invalidates when the calm pre-pump feature flag changes", () => {
+    const cache = makeCache({
+      scanParams: { ...scanParams, requireCalmPrePump: true },
     });
     expect(shouldSkipScan(cache, baseOpts)).toBe(false);
   });

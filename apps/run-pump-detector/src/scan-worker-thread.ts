@@ -18,6 +18,7 @@ export interface WorkerScanJob {
   minScore: number;
   minDumpScore: number;
   liquidityThreshold: number;
+  requireCalmPrePump: boolean;
   exchanges: string[] | null;
   scanParams: ScanParams;
   cacheDir?: string;
@@ -85,6 +86,7 @@ function runJob(job: WorkerScanJob): CoinWorkerResult {
       minScore: job.minScore,
       minDumpScore: job.minDumpScore,
       liquidityThreshold: job.liquidityThreshold,
+      requireCalmPrePump: job.requireCalmPrePump,
       exchanges,
       scanParams: job.scanParams,
       cacheDir: job.cacheDir,

@@ -52,6 +52,15 @@ export function pumpPhaseMeetsQualityGates(
   return priceChangeLast6 >= MIN_PUMP_PRICE_CHANGE_LAST_6;
 }
 
+export function pumpPhaseMeetsCalmPrePumpGate(
+  phase: PumpPhase,
+  calmBeforePump: boolean,
+  requireCalmPrePump: boolean,
+): boolean {
+  if (!requireCalmPrePump || !PUMP_QUALITY_PHASES.has(phase)) return true;
+  return calmBeforePump;
+}
+
 export function candidateMeetsPumpQualityGates(
   candidate: Pick<PumpCandidate, "phase" | "metrics">,
   minPumpScore: number,

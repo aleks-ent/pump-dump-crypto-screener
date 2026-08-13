@@ -16,6 +16,7 @@ import {
   loadPumpDays,
   loadPumpMinScore,
   loadPumpMinDumpScore,
+  loadPumpRequireCalmPrePump,
   loadPumpScanCacheEnabled,
   loadPumpUniverseRefreshDays,
   resolveRepoPath,
@@ -74,6 +75,7 @@ async function main(): Promise<void> {
   const minScore = await loadPumpMinScore();
   const minDumpScore = await loadPumpMinDumpScore();
   const scanCacheEnabled = await loadPumpScanCacheEnabled();
+  const requireCalmPrePump = await loadPumpRequireCalmPrePump();
   const universeRefreshDays = await loadPumpUniverseRefreshDays();
   const useScanCache = scanCacheEnabled;
 
@@ -105,6 +107,7 @@ async function main(): Promise<void> {
       minScore,
       minDumpScore,
       useScanCache,
+      requireCalmPrePump,
       universeRefreshDays,
       alertCutoffMs,
       opts,
@@ -129,6 +132,7 @@ async function runMonitorPipeline(args: {
   minScore: number;
   minDumpScore: number;
   useScanCache: boolean;
+  requireCalmPrePump: boolean;
   universeRefreshDays: number;
   alertCutoffMs: number;
   opts: {
@@ -148,6 +152,7 @@ async function runMonitorPipeline(args: {
     minScore,
     minDumpScore,
     useScanCache,
+    requireCalmPrePump,
     universeRefreshDays,
     alertCutoffMs,
     opts,
@@ -160,6 +165,9 @@ async function runMonitorPipeline(args: {
   console.error(`Pump monitor: ${days}-day window (config.js pump.days)`);
   console.error(`Min score: ${minScore} pumps / ${minDumpScore} dumps (config.js)`);
   console.error(`Scan cache: ${useScanCache ? "enabled" : "disabled (config.js pump.scanCache)"}`);
+  console.error(
+    `Calm pre-pump gate: ${requireCalmPrePump ? "enabled" : "disabled"} (config.js pump.requireCalmPrePump)`,
+  );
   console.error(`Symbol universe refresh: every ${universeRefreshDays} day(s)`);
   console.error(
     `Telegram alert watermark: episodes ending at or after ${new Date(alertCutoffMs).toISOString()}`,

@@ -40,6 +40,7 @@ export interface ScanOneCoinOptions {
   minScore: number;
   minDumpScore: number;
   liquidityThreshold: number;
+  requireCalmPrePump: boolean;
   exchanges?: Set<string>;
   scanParams: ScanParams;
   cacheDir?: string;
@@ -60,6 +61,7 @@ export function scanOneCoin(opts: ScanOneCoinOptions): CoinWorkerResult {
     minScore,
     minDumpScore,
     liquidityThreshold,
+    requireCalmPrePump,
     exchanges,
     scanParams,
     cacheDir,
@@ -194,6 +196,7 @@ export function scanOneCoin(opts: ScanOneCoinOptions): CoinWorkerResult {
     minScore,
     minDumpScore,
     liquidityThreshold,
+    requireCalmPrePump,
     exchanges,
     incremental: tailRescan
       ? {

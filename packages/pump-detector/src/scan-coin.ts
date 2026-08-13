@@ -6,6 +6,7 @@ import { classifyPhase } from "./detect/phases.js";
 import {
   phaseMeetsMinScore,
   candidateIsReportable,
+  pumpPhaseMeetsCalmPrePumpGate,
   pumpPhaseMeetsQualityGates,
 } from "./detect/threshold.js";
 import { filterPumpCandidatesByMinConsecutiveBars } from "./detect/run-length.js";
@@ -88,6 +89,12 @@ function toCandidate(
       ema20: f.ema20,
       ema50: f.ema50,
       ema20Slope: f.ema20Slope,
+      calmBeforePump: f.calmBeforePump,
+      prePumpRangePct: f.prePumpRangePct,
+      prePumpPathPct: f.prePumpPathPct,
+      prePumpMedianRangeRatio: f.prePumpMedianRangeRatio,
+      prePumpMaxRangeRatio: f.prePumpMaxRangeRatio,
+      prePumpMedianVolumeRatio: f.prePumpMedianVolumeRatio,
     },
     reasons: buildReasons(f, confirmedCount),
   };
@@ -118,6 +125,7 @@ export function scanCoin(
   const useArchives = Boolean(opts.archivesDir);
   const coverageSnapshots = toCoverageSnapshots(coverages);
   const peersAvailable = group.instrumentsByExchange.size - 1;
+  let calmGateDropped = 0;
 
   const leaderInst = group.instrumentsByExchange.get(leaderExchange);
   if (!leaderInst) {
@@ -201,6 +209,10 @@ export function scanCoin(
     if (!REPORTABLE_PHASES.has(phase)) continue;
     if (phase === "ignore" || !phaseMeetsMinScore(phase, score, minScore, minDumpScore)) continue;
     if (!pumpPhaseMeetsQualityGates(phase, f.priceChangeLast6, minScore)) continue;
+    if (!pumpPhaseMeetsCalmPrePumpGate(phase, f.calmBeforePump, Boolean(opts.requireCalmPrePump))) {
+      calmGateDropped += 1;
+      continue;
+    }
 
     const candidate = toCandidate(
       leaderInst,
@@ -222,6 +234,11 @@ export function scanCoin(
   }
 
   const candidates = filterPumpCandidatesByMinConsecutiveBars(hits);
+  if (calmGateDropped > 0) {
+    opts.onLog?.(
+      `[scan] ${group.key}: calm pre-pump gate dropped ${calmGateDropped} pump hit(s)`,
+    );
+  }
   const dropped = hits.length - candidates.length;
   if (dropped > 0) {
     opts.onLog?.(

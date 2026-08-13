@@ -117,8 +117,15 @@ export class ScanWorkerPool {
       minScore: 40,
       minDumpScore: 40,
       liquidityThreshold: 100_000,
+      requireCalmPrePump: false,
       exchanges: null,
-      scanParams: { minScore: 40, minDumpScore: 40, liquidityThreshold: 100_000, exchanges: null },
+      scanParams: {
+        minScore: 40,
+        minDumpScore: 40,
+        liquidityThreshold: 100_000,
+        exchanges: null,
+        requireCalmPrePump: false,
+      },
       outputPath: ".",
       logPath: ".",
     };
@@ -179,6 +186,7 @@ export function buildWorkerScanJob(opts: {
   minScore: number;
   minDumpScore: number;
   liquidityThreshold: number;
+  requireCalmPrePump: boolean;
   exchanges: Set<string> | undefined;
   scanParams: ScanParams;
   cacheDir?: string;
@@ -196,6 +204,7 @@ export function buildWorkerScanJob(opts: {
     minScore: opts.minScore,
     minDumpScore: opts.minDumpScore,
     liquidityThreshold: opts.liquidityThreshold,
+    requireCalmPrePump: opts.requireCalmPrePump,
     exchanges: opts.exchanges ? [...opts.exchanges] : null,
     scanParams: opts.scanParams,
     cacheDir: opts.cacheDir,

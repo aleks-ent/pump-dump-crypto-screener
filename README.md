@@ -45,6 +45,7 @@ pump: {
   days: 5,        // lookback calendar days for download + scan
   minScore: 80,
   scanCache: true,
+  requireCalmPrePump: false, // feature flag: require a calm 2h period before pumps
 },
 ```
 

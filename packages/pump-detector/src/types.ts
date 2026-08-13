@@ -52,6 +52,13 @@ export interface FeatureSnapshot {
   breakoutFromLocalRange: boolean;
   strongBreakout: boolean;
   accumulationBeforePump: boolean;
+  /** True when the 2h window immediately before the impulse is quiet and low-oscillation. */
+  calmBeforePump: boolean;
+  prePumpRangePct: number | null;
+  prePumpPathPct: number | null;
+  prePumpMedianRangeRatio: number | null;
+  prePumpMaxRangeRatio: number | null;
+  prePumpMedianVolumeRatio: number | null;
   maxConsecutiveRedLast6: number;
   pullbacksAreBought: boolean;
   directionalImpulse: boolean;
@@ -120,6 +127,12 @@ export interface PumpCandidate {
     ema20: number | null;
     ema50: number | null;
     ema20Slope: number | null;
+    calmBeforePump?: boolean;
+    prePumpRangePct?: number | null;
+    prePumpPathPct?: number | null;
+    prePumpMedianRangeRatio?: number | null;
+    prePumpMaxRangeRatio?: number | null;
+    prePumpMedianVolumeRatio?: number | null;
   };
   reasons: string[];
 }
@@ -137,6 +150,8 @@ export interface ScanOptions {
   minDumpScore?: number;
   exchanges?: Set<string>;
   marketCategory?: "spot" | "futures" | null;
+  /** Feature flag: require a calm 2h window before pump-side candidates. */
+  requireCalmPrePump?: boolean;
   /** Reuse cached candidates before the tail warmup zone; rescan only the last N bars. */
   incremental?: {
     cachedCandidates: PumpCandidate[];
