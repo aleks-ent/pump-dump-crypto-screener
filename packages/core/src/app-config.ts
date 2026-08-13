@@ -22,6 +22,8 @@ export interface AppConfig {
     minDumpScore?: number;
     /** Per-coin scan result cache (reads + incremental tail rescans). Default true. */
     scanCache?: boolean;
+    /** Require a calm, low-oscillation period immediately before pump candidates. Default false. */
+    requireCalmPrePump?: boolean;
     /** @deprecated use minScore */
     statsMinScore?: number;
   };
@@ -131,4 +133,21 @@ export function resolvePumpScanCache(cfg: AppConfig): boolean {
 
 export async function loadPumpScanCacheEnabled(configPath?: string): Promise<boolean> {
   return resolvePumpScanCache(await loadAppConfig(configPath));
+}
+
+const DEFAULT_REQUIRE_CALM_PRE_PUMP = false;
+
+export function resolvePumpRequireCalmPrePump(cfg: AppConfig): boolean {
+  const raw = cfg.pump?.requireCalmPrePump;
+  if (raw === undefined) return DEFAULT_REQUIRE_CALM_PRE_PUMP;
+  if (typeof raw !== "boolean") {
+    throw new Error(
+      `Invalid pump.requireCalmPrePump in config.js — must be a boolean (got ${String(raw)})`,
+    );
+  }
+  return raw;
+}
+
+export async function loadPumpRequireCalmPrePump(configPath?: string): Promise<boolean> {
+  return resolvePumpRequireCalmPrePump(await loadAppConfig(configPath));
 }

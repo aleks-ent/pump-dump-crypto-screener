@@ -40,6 +40,7 @@ export interface ScanParams {
   minDumpScore: number;
   liquidityThreshold: number;
   exchanges: string[] | null;
+  requireCalmPrePump: boolean;
 }
 
 export interface CoinScanCacheCoverage {
@@ -163,7 +164,8 @@ function scanParamsEqual(a: ScanParams, b: ScanParams): boolean {
   if (
     a.minScore !== b.minScore ||
     a.minDumpScore !== b.minDumpScore ||
-    a.liquidityThreshold !== b.liquidityThreshold
+    a.liquidityThreshold !== b.liquidityThreshold ||
+    a.requireCalmPrePump !== b.requireCalmPrePump
   ) {
     return false;
   }

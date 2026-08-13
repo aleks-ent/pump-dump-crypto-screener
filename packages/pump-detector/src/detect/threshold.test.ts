@@ -6,6 +6,7 @@ import {
   candidateMeetsPumpQualityGates,
   minScoreForPhase,
   phaseMeetsMinScore,
+  pumpPhaseMeetsCalmPrePumpGate,
   pumpPhaseMeetsQualityGates,
 } from "./threshold.js";
 
@@ -118,5 +119,21 @@ describe("pump quality gates", () => {
     });
     expect(candidateIsReportable(dump, 80, 55)).toBe(true);
     expect(candidateMeetsPumpQualityGates(dump, 80)).toBe(true);
+  });
+});
+
+describe("calm pre-pump feature gate", () => {
+  it("preserves current pump behavior while the feature flag is disabled", () => {
+    expect(pumpPhaseMeetsCalmPrePumpGate("active_pump", false, false)).toBe(true);
+  });
+
+  it("requires calm history for pump phases when enabled", () => {
+    expect(pumpPhaseMeetsCalmPrePumpGate("active_pump", false, true)).toBe(false);
+    expect(pumpPhaseMeetsCalmPrePumpGate("active_pump", true, true)).toBe(true);
+    expect(pumpPhaseMeetsCalmPrePumpGate("late_pump", false, true)).toBe(false);
+  });
+
+  it("does not affect dump detection", () => {
+    expect(pumpPhaseMeetsCalmPrePumpGate("distribution_or_fade", false, true)).toBe(true);
   });
 });

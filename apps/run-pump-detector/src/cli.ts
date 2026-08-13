@@ -7,6 +7,7 @@ import {
   defaultWorkerConcurrency,
   loadPumpMinScore,
   loadPumpMinDumpScore,
+  loadPumpRequireCalmPrePump,
   loadPumpScanCacheEnabled,
   resolveRepoPath,
   resolveArchiveWindow,
@@ -111,6 +112,7 @@ async function main(): Promise<void> {
   const minScoreDefault = await loadPumpMinScore();
   const minDumpScoreDefault = await loadPumpMinDumpScore();
   const scanCacheFromConfig = await loadPumpScanCacheEnabled();
+  const requireCalmPrePump = await loadPumpRequireCalmPrePump();
   const program = new Command();
   program
     .name("run-pump-detector")
@@ -194,8 +196,10 @@ async function main(): Promise<void> {
   log(`Days: ${days}, worker threads: ${concurrency} (auto-detected CPU cores)`);
   log(`Window: ${new Date(startMs).toISOString()} .. ${new Date(endMs).toISOString()}`);
   log(`Scan cache: ${useCache ? cacheDir : "disabled"}`);
+  log(`Require calm pre-pump: ${requireCalmPrePump ? "enabled" : "disabled"}`);
 
   console.error(`Worker threads: ${concurrency} (auto-detected CPU cores)`);
+  console.error(`Calm pre-pump gate: ${requireCalmPrePump ? "enabled" : "disabled"}`);
 
   const incompleteReport = join(dataDir, "reports", "archive_incomplete_report.json");
   if (existsSync(incompleteReport)) {
@@ -249,6 +253,7 @@ async function main(): Promise<void> {
     minScore: Number(opts.minScore),
     minDumpScore: Number(opts.minDumpScore),
     liquidityThreshold: Number(opts.liquidityThreshold),
+    requireCalmPrePump,
     exchanges: opts.exchanges
       ? opts.exchanges
           .split(",")
@@ -340,6 +345,7 @@ async function main(): Promise<void> {
                 minScore: Number(opts.minScore),
                 minDumpScore: Number(opts.minDumpScore),
                 liquidityThreshold: Number(opts.liquidityThreshold),
+                requireCalmPrePump,
                 exchanges: parseExchanges(opts.exchanges),
                 scanParams,
                 cacheDir: useCache ? cacheDir : undefined,

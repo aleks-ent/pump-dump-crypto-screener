@@ -6,6 +6,7 @@ import {
   type ComputedSeries,
 } from "../metrics/series-state.js";
 import { median } from "../metrics/math.js";
+import { evaluatePrePumpCalm } from "./pre-pump-calm.js";
 
 /** 3 × 5m bars = 15 minutes of sustained activation before a pump phase is allowed. */
 export const MIN_PUMP_DURATION_BARS = 3;
@@ -155,6 +156,17 @@ export function evaluateFeatures(series: ComputedSeries, i: number): FeatureSnap
 
   const accumulationBeforePump =
     impulseStartIndex != null ? checkAccumulation(series, impulseStartIndex) : false;
+  const prePumpCalm =
+    impulseStartIndex != null
+      ? evaluatePrePumpCalm(series, impulseStartIndex)
+      : {
+          calm: false,
+          rangePct: null,
+          pathPct: null,
+          medianRangeRatio: null,
+          maxRangeRatio: null,
+          medianVolumeRatio: null,
+        };
 
   const maxConsecutiveRedLast6 = maxConsecutiveRed(series, i, 6);
   const ema20 = series.ema20[i];
@@ -235,6 +247,12 @@ export function evaluateFeatures(series: ComputedSeries, i: number): FeatureSnap
     breakoutFromLocalRange,
     strongBreakout,
     accumulationBeforePump,
+    calmBeforePump: prePumpCalm.calm,
+    prePumpRangePct: prePumpCalm.rangePct,
+    prePumpPathPct: prePumpCalm.pathPct,
+    prePumpMedianRangeRatio: prePumpCalm.medianRangeRatio,
+    prePumpMaxRangeRatio: prePumpCalm.maxRangeRatio,
+    prePumpMedianVolumeRatio: prePumpCalm.medianVolumeRatio,
     maxConsecutiveRedLast6,
     pullbacksAreBought,
     directionalImpulse,

@@ -6,6 +6,7 @@ export * from "./scan-stats.js";
 export * from "./instrument/group.js";
 export * from "./metrics/series-state.js";
 export * from "./features/evaluate.js";
+export * from "./features/pre-pump-calm.js";
 export * from "./detect/threshold.js";
 export * from "./detect/phases.js";
 export * from "./detect/run-length.js";

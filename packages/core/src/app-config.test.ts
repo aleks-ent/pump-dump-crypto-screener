@@ -4,6 +4,7 @@ import {
   resolvePumpDays,
   resolvePumpMinDumpScore,
   resolvePumpMinScore,
+  resolvePumpRequireCalmPrePump,
   resolvePumpScanCache,
   resolvePumpUniverseRefreshDays,
   type AppConfig,
@@ -117,5 +118,24 @@ describe("resolvePumpScanCache", () => {
     expect(() =>
       resolvePumpScanCache({ pump: { scanCache: "no" as unknown as boolean } }),
     ).toThrow(/pump\.scanCache/);
+  });
+});
+
+describe("resolvePumpRequireCalmPrePump", () => {
+  it("defaults to false when pump.requireCalmPrePump is omitted", () => {
+    expect(resolvePumpRequireCalmPrePump({})).toBe(false);
+  });
+
+  it("reads pump.requireCalmPrePump", () => {
+    expect(resolvePumpRequireCalmPrePump({ pump: { requireCalmPrePump: true } })).toBe(true);
+    expect(resolvePumpRequireCalmPrePump({ pump: { requireCalmPrePump: false } })).toBe(false);
+  });
+
+  it("rejects non-boolean values", () => {
+    expect(() =>
+      resolvePumpRequireCalmPrePump({
+        pump: { requireCalmPrePump: "yes" as unknown as boolean },
+      }),
+    ).toThrow(/pump\.requireCalmPrePump/);
   });
 });

@@ -203,6 +203,7 @@ async function main(): Promise<void> {
     minDumpScore: minScore,
     liquidityThreshold,
     exchanges: null,
+    requireCalmPrePump: false,
   };
 
   const universePath = join(dataDir, "reports", "symbol_universe.json");

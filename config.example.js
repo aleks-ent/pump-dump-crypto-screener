@@ -29,5 +29,7 @@ export default {
     universeRefreshDays: 4,
     minScore: 80,
     scanCache: true,
+    // Feature flag: only report pumps preceded by a calm, low-oscillation 2h period.
+    requireCalmPrePump: false,
   },
 };
