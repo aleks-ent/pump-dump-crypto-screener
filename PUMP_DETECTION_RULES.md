@@ -498,7 +498,7 @@ AND preWindowVolumeMedian <= 1.2 * volumeBaseline
 
 This is not required for every pump, but it increases confidence.
 
-### Optional strict calm-period gate
+### Optional calm-period gate
 
 `pump.requireCalmPrePump` is a feature flag (default `false`) that turns the calm period
 from supporting evidence into a required quality gate for pump-side phases. The gate uses
@@ -508,11 +508,11 @@ the impulse itself or later.
 The pre-pump window must satisfy all of these conditions:
 
 ```ts
-prePumpRangePct <= 3
-prePumpPathPct <= 6
-prePumpMedianRangeRatio <= 1.25
-prePumpMaxRangeRatio < 2
-prePumpMedianVolumeRatio <= 1.2
+prePumpRangePct <= 5
+prePumpPathPct <= 10
+prePumpMedianRangeRatio <= 1.5
+prePumpMaxRangeRatio < 3
+prePumpMedianVolumeRatio <= 1.5
 ```
 
 `prePumpPathPct` is the sum of absolute close-to-close moves. It catches a chart that has
