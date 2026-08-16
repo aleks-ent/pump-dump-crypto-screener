@@ -3,7 +3,11 @@ import { computeSeries } from "../metrics/series-state.js";
 import type { Candle } from "../types.js";
 import {
   evaluatePrePumpCalm,
+  MAX_PRE_PUMP_CANDLE_RANGE_RATIO,
+  MAX_PRE_PUMP_MEDIAN_RANGE_RATIO,
+  MAX_PRE_PUMP_MEDIAN_VOLUME_RATIO,
   MAX_PRE_PUMP_PATH_PCT,
+  MAX_PRE_PUMP_RANGE_PCT,
   PRE_PUMP_CALM_WINDOW_BARS,
 } from "./pre-pump-calm.js";
 
@@ -33,7 +37,18 @@ function candle(
   };
 }
 
-function seriesWithPrePumpWindow(mode: "calm" | "oscillating" | "wide" | "high-volume") {
+type PrePumpMode =
+  | "calm"
+  | "trend"
+  | "moderately-oscillating"
+  | "oscillating"
+  | "moderate-range"
+  | "single-range-spike"
+  | "wide"
+  | "moderate-volume"
+  | "high-volume";
+
+function seriesWithPrePumpWindow(mode: PrePumpMode) {
   const candles: Candle[] = [];
   let previousClose = 100;
 
@@ -44,14 +59,20 @@ function seriesWithPrePumpWindow(mode: "calm" | "oscillating" | "wide" | "high-v
   }
 
   for (let i = 0; i < PRE_PUMP_CALM_WINDOW_BARS; i++) {
-    const close =
-      mode === "oscillating"
-        ? i % 2 === 0
-          ? 100.2
-          : 99.8
-        : previousClose * 1.00005;
-    const wickPct = mode === "wide" ? 1.6 : 0.03;
-    const volume = mode === "high-volume" ? 2_000 : 500;
+    let close = previousClose * 1.00005;
+    if (mode === "moderately-oscillating") close = i % 2 === 0 ? 100.2 : 99.8;
+    if (mode === "oscillating") close = i % 2 === 0 ? 100.45 : 99.55;
+    if (mode === "trend") close = previousClose * 1.0015;
+
+    let wickPct = 0.03;
+    if (mode === "wide") wickPct = 1.6;
+    if (mode === "moderate-range") wickPct = 0.27;
+    if (mode === "single-range-spike" && i === 12) wickPct = 0.5;
+
+    let volume = 500;
+    if (mode === "moderate-volume") volume = 1_400;
+    if (mode === "high-volume") volume = 2_000;
+
     candles.push(candle(candles.length, previousClose, close, wickPct, volume));
     previousClose = close;
   }
@@ -73,7 +94,52 @@ describe("evaluatePrePumpCalm", () => {
     expect(result.medianVolumeRatio).toBeLessThan(1);
   });
 
-  it("rejects a narrow-looking window whose closes repeatedly oscillate", () => {
+  it("accepts a two-hour envelope between the previous and relaxed limits", () => {
+    const { series, impulseStartIndex } = seriesWithPrePumpWindow("trend");
+    const result = evaluatePrePumpCalm(series, impulseStartIndex);
+
+    expect(result.rangePct).toBeGreaterThan(3);
+    expect(result.rangePct).toBeLessThanOrEqual(MAX_PRE_PUMP_RANGE_PCT);
+    expect(result.calm).toBe(true);
+  });
+
+  it("accepts moderate oscillation between the previous and relaxed path limits", () => {
+    const { series, impulseStartIndex } = seriesWithPrePumpWindow("moderately-oscillating");
+    const result = evaluatePrePumpCalm(series, impulseStartIndex);
+
+    expect(result.pathPct).toBeGreaterThan(6);
+    expect(result.pathPct).toBeLessThanOrEqual(MAX_PRE_PUMP_PATH_PCT);
+    expect(result.calm).toBe(true);
+  });
+
+  it("accepts a typical range between the previous and relaxed relative limits", () => {
+    const { series, impulseStartIndex } = seriesWithPrePumpWindow("moderate-range");
+    const result = evaluatePrePumpCalm(series, impulseStartIndex);
+
+    expect(result.medianRangeRatio).toBeGreaterThan(1.25);
+    expect(result.medianRangeRatio).toBeLessThanOrEqual(MAX_PRE_PUMP_MEDIAN_RANGE_RATIO);
+    expect(result.calm).toBe(true);
+  });
+
+  it("accepts one candle between the previous and relaxed maximum range limits", () => {
+    const { series, impulseStartIndex } = seriesWithPrePumpWindow("single-range-spike");
+    const result = evaluatePrePumpCalm(series, impulseStartIndex);
+
+    expect(result.maxRangeRatio).toBeGreaterThanOrEqual(2);
+    expect(result.maxRangeRatio).toBeLessThan(MAX_PRE_PUMP_CANDLE_RANGE_RATIO);
+    expect(result.calm).toBe(true);
+  });
+
+  it("accepts median volume between the previous and relaxed relative limits", () => {
+    const { series, impulseStartIndex } = seriesWithPrePumpWindow("moderate-volume");
+    const result = evaluatePrePumpCalm(series, impulseStartIndex);
+
+    expect(result.medianVolumeRatio).toBeGreaterThan(1.2);
+    expect(result.medianVolumeRatio).toBeLessThanOrEqual(MAX_PRE_PUMP_MEDIAN_VOLUME_RATIO);
+    expect(result.calm).toBe(true);
+  });
+
+  it("rejects a narrow-looking window whose closes oscillate beyond the relaxed limit", () => {
     const { series, impulseStartIndex } = seriesWithPrePumpWindow("oscillating");
     const result = evaluatePrePumpCalm(series, impulseStartIndex);
 

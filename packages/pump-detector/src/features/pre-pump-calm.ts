@@ -5,19 +5,19 @@ import type { ComputedSeries } from "../metrics/series-state.js";
 export const PRE_PUMP_CALM_WINDOW_BARS = 24;
 
 /** Maximum high-to-low envelope across the two-hour window. */
-export const MAX_PRE_PUMP_RANGE_PCT = 3;
+export const MAX_PRE_PUMP_RANGE_PCT = 5;
 
 /** Maximum sum of absolute close-to-close moves across the window. */
-export const MAX_PRE_PUMP_PATH_PCT = 6;
+export const MAX_PRE_PUMP_PATH_PCT = 10;
 
 /** Typical pre-pump candle must not be larger than the instrument's 24h baseline. */
-export const MAX_PRE_PUMP_MEDIAN_RANGE_RATIO = 1.25;
+export const MAX_PRE_PUMP_MEDIAN_RANGE_RATIO = 1.5;
 
-/** Reject a calm window containing even one candle at activation-level volatility. */
-export const MAX_PRE_PUMP_CANDLE_RANGE_RATIO = 2;
+/** Maximum size of any pre-pump candle relative to the instrument's 24h baseline. */
+export const MAX_PRE_PUMP_CANDLE_RANGE_RATIO = 3;
 
 /** Typical pre-pump volume must remain close to or below the instrument's 24h baseline. */
-export const MAX_PRE_PUMP_MEDIAN_VOLUME_RATIO = 1.2;
+export const MAX_PRE_PUMP_MEDIAN_VOLUME_RATIO = 1.5;
 
 export interface PrePumpCalmSnapshot {
   calm: boolean;
