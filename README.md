@@ -254,3 +254,7 @@ Useful flags: `--days`, `--exchanges`, `--quote-currencies`, `--discover`, `--js
 - `apps/run-pump-detector` — scan worker pool and `pump_events.ndjson`
 - `apps/pump-monitor` — fetch + scan + Turso + Telegram alerts + HTTP pump page
 - `apps/fetch-market-stats` — REST candle pull CLI (standalone; not used by `pump-monitor`)
+
+## License
+
+This project is open source under the [MIT License](LICENSE).
