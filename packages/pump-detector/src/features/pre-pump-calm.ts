@@ -5,19 +5,16 @@ import type { ComputedSeries } from "../metrics/series-state.js";
 export const PRE_PUMP_CALM_WINDOW_BARS = 24;
 
 /** Maximum high-to-low envelope across the two-hour window. */
-export const MAX_PRE_PUMP_RANGE_PCT = 5;
+export const MAX_PRE_PUMP_RANGE_PCT = 10;
 
 /** Maximum sum of absolute close-to-close moves across the window. */
-export const MAX_PRE_PUMP_PATH_PCT = 10;
+export const MAX_PRE_PUMP_PATH_PCT = 20;
 
-/** Typical pre-pump candle must not be larger than the instrument's 24h baseline. */
-export const MAX_PRE_PUMP_MEDIAN_RANGE_RATIO = 1.5;
+/** Typical pre-pump candle may expand above the instrument's 24h baseline. */
+export const MAX_PRE_PUMP_MEDIAN_RANGE_RATIO = 2.5;
 
-/** Maximum size of any pre-pump candle relative to the instrument's 24h baseline. */
-export const MAX_PRE_PUMP_CANDLE_RANGE_RATIO = 3;
-
-/** Typical pre-pump volume must remain close to or below the instrument's 24h baseline. */
-export const MAX_PRE_PUMP_MEDIAN_VOLUME_RATIO = 1.5;
+/** Typical pre-pump volume may expand above the instrument's 24h baseline. */
+export const MAX_PRE_PUMP_MEDIAN_VOLUME_RATIO = 2.5;
 
 export interface PrePumpCalmSnapshot {
   calm: boolean;
@@ -109,7 +106,6 @@ export function evaluatePrePumpCalm(
       rangePct <= MAX_PRE_PUMP_RANGE_PCT &&
       pathPct <= MAX_PRE_PUMP_PATH_PCT &&
       medianRangeRatio <= MAX_PRE_PUMP_MEDIAN_RANGE_RATIO &&
-      maxRangeRatio < MAX_PRE_PUMP_CANDLE_RANGE_RATIO &&
       medianVolumeRatio <= MAX_PRE_PUMP_MEDIAN_VOLUME_RATIO,
     rangePct,
     pathPct,

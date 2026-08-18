@@ -508,16 +508,16 @@ the impulse itself or later.
 The pre-pump window must satisfy all of these conditions:
 
 ```ts
-prePumpRangePct <= 5
-prePumpPathPct <= 10
-prePumpMedianRangeRatio <= 1.5
-prePumpMaxRangeRatio < 3
-prePumpMedianVolumeRatio <= 1.5
+prePumpRangePct <= 10
+prePumpPathPct <= 20
+prePumpMedianRangeRatio <= 2.5
+prePumpMedianVolumeRatio <= 2.5
 ```
 
 `prePumpPathPct` is the sum of absolute close-to-close moves. It catches a chart that has
 a narrow high/low envelope but repeatedly oscillates inside that envelope. Range and volume
-ratios use the instrument's own preceding 24-hour baselines.
+ratios use the instrument's own preceding 24-hour baselines. The maximum single-candle range
+ratio remains available as diagnostic metadata, but it does not veto an otherwise calm window.
 
 When the flag is enabled, activation, active-pump, late-pump, and spike candidates that do
 not meet this gate are omitted. Distribution/fade (dump) candidates are unchanged. Toggling
