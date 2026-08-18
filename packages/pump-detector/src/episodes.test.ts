@@ -70,11 +70,32 @@ describe("groupEventsIntoEpisodes", () => {
     expect(episodes).toHaveLength(2);
   });
 
-  it("splits pump and dump phases", () => {
+  it("keeps immediate distribution in the preceding pump lifecycle", () => {
     const t0 = 1_000_000;
     const episodes = groupEventsIntoEpisodes([
       event("BTC", t0, "active_pump", 60),
       event("BTC", t0 + 300_000, "distribution_or_fade", 50),
+    ]);
+    expect(episodes).toHaveLength(1);
+    expect(episodes[0]!.type).toBe("pump");
+    expect(episodes[0]!.eventCount).toBe(2);
+  });
+
+  it("keeps standalone distribution as a dump episode", () => {
+    const t0 = 1_000_000;
+    const episodes = groupEventsIntoEpisodes([
+      event("BTC", t0, "distribution_or_fade", 55),
+      event("BTC", t0 + 300_000, "distribution_or_fade", 60),
+    ]);
+    expect(episodes).toHaveLength(1);
+    expect(episodes[0]!.type).toBe("dump");
+  });
+
+  it("splits distribution from a pump when the lifecycle gap is too large", () => {
+    const t0 = 1_000_000;
+    const episodes = groupEventsIntoEpisodes([
+      event("BTC", t0, "active_pump", 60),
+      event("BTC", t0 + 3_600_000, "distribution_or_fade", 55),
     ]);
     expect(episodes).toHaveLength(2);
     expect(episodes.map((e) => e.type).sort()).toEqual(["dump", "pump"]);

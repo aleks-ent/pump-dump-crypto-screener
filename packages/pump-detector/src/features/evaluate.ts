@@ -11,6 +11,27 @@ import { evaluatePrePumpCalm } from "./pre-pump-calm.js";
 /** 3 × 5m bars = 15 minutes of sustained activation before a pump phase is allowed. */
 export const MIN_PUMP_DURATION_BARS = 3;
 
+/** Minimum 15-minute decline before high-volume stalling can count as distribution. */
+export const MIN_DISTRIBUTION_STALL_PRICE_DROP = 0.01;
+
+/** Minimum distance below the recent high before stalling can count as distribution. */
+export const MIN_DISTRIBUTION_STALL_DRAWDOWN = 0.01;
+
+export function isHighVolumeDistributionStall(input: {
+  volumeRatio: number;
+  priceChangeLast3: number;
+  close: number;
+  recentHigh: number;
+}): boolean {
+  if (input.recentHigh <= 0) return false;
+  const drawdownFromRecentHigh = (input.recentHigh - input.close) / input.recentHigh;
+  return (
+    input.volumeRatio >= 5 &&
+    input.priceChangeLast3 <= -MIN_DISTRIBUTION_STALL_PRICE_DROP &&
+    drawdownFromRecentHigh >= MIN_DISTRIBUTION_STALL_DRAWDOWN
+  );
+}
+
 function countSustainedActivationBars(series: ComputedSeries, i: number): number {
   let count = 0;
   for (let j = i; j >= 0; j--) {
@@ -205,12 +226,17 @@ export function evaluateFeatures(series: ComputedSeries, i: number): FeatureSnap
   if (currentPullback != null && currentPullback >= 0.5) {
     distributionDetected = true;
   }
-  if (vr >= 5 && priceChangeLast3 <= 0.01) {
-    let recentHigh = -Infinity;
-    for (let j = Math.max(0, i - 6); j <= i; j++) {
-      recentHigh = Math.max(recentHigh, series.candles[j]!.high);
-    }
-    if (close < recentHigh) distributionDetected = true;
+  let recentHigh = -Infinity;
+  for (let j = Math.max(0, i - 6); j <= i; j++) {
+    recentHigh = Math.max(recentHigh, series.candles[j]!.high);
+  }
+  if (isHighVolumeDistributionStall({
+    volumeRatio: vr,
+    priceChangeLast3,
+    close,
+    recentHigh,
+  })) {
+    distributionDetected = true;
   }
 
   const spikeDetected = detectSpike(series, i);
