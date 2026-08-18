@@ -3,7 +3,6 @@ import { computeSeries } from "../metrics/series-state.js";
 import type { Candle } from "../types.js";
 import {
   evaluatePrePumpCalm,
-  MAX_PRE_PUMP_CANDLE_RANGE_RATIO,
   MAX_PRE_PUMP_MEDIAN_RANGE_RATIO,
   MAX_PRE_PUMP_MEDIAN_VOLUME_RATIO,
   MAX_PRE_PUMP_PATH_PCT,
@@ -60,18 +59,18 @@ function seriesWithPrePumpWindow(mode: PrePumpMode) {
 
   for (let i = 0; i < PRE_PUMP_CALM_WINDOW_BARS; i++) {
     let close = previousClose * 1.00005;
-    if (mode === "moderately-oscillating") close = i % 2 === 0 ? 100.2 : 99.8;
+    if (mode === "moderately-oscillating") close = i % 2 === 0 ? 100.35 : 99.65;
     if (mode === "oscillating") close = i % 2 === 0 ? 100.45 : 99.55;
-    if (mode === "trend") close = previousClose * 1.0015;
+    if (mode === "trend") close = previousClose * 1.003;
 
     let wickPct = 0.03;
     if (mode === "wide") wickPct = 1.6;
-    if (mode === "moderate-range") wickPct = 0.27;
-    if (mode === "single-range-spike" && i === 12) wickPct = 0.5;
+    if (mode === "moderate-range") wickPct = 0.45;
+    if (mode === "single-range-spike" && i === 12) wickPct = 0.9;
 
     let volume = 500;
-    if (mode === "moderate-volume") volume = 1_400;
-    if (mode === "high-volume") volume = 2_000;
+    if (mode === "moderate-volume") volume = 2_000;
+    if (mode === "high-volume") volume = 3_000;
 
     candles.push(candle(candles.length, previousClose, close, wickPct, volume));
     previousClose = close;
@@ -98,7 +97,7 @@ describe("evaluatePrePumpCalm", () => {
     const { series, impulseStartIndex } = seriesWithPrePumpWindow("trend");
     const result = evaluatePrePumpCalm(series, impulseStartIndex);
 
-    expect(result.rangePct).toBeGreaterThan(3);
+    expect(result.rangePct).toBeGreaterThan(5);
     expect(result.rangePct).toBeLessThanOrEqual(MAX_PRE_PUMP_RANGE_PCT);
     expect(result.calm).toBe(true);
   });
@@ -107,7 +106,7 @@ describe("evaluatePrePumpCalm", () => {
     const { series, impulseStartIndex } = seriesWithPrePumpWindow("moderately-oscillating");
     const result = evaluatePrePumpCalm(series, impulseStartIndex);
 
-    expect(result.pathPct).toBeGreaterThan(6);
+    expect(result.pathPct).toBeGreaterThan(10);
     expect(result.pathPct).toBeLessThanOrEqual(MAX_PRE_PUMP_PATH_PCT);
     expect(result.calm).toBe(true);
   });
@@ -116,17 +115,18 @@ describe("evaluatePrePumpCalm", () => {
     const { series, impulseStartIndex } = seriesWithPrePumpWindow("moderate-range");
     const result = evaluatePrePumpCalm(series, impulseStartIndex);
 
-    expect(result.medianRangeRatio).toBeGreaterThan(1.25);
+    expect(result.medianRangeRatio).toBeGreaterThan(1.5);
     expect(result.medianRangeRatio).toBeLessThanOrEqual(MAX_PRE_PUMP_MEDIAN_RANGE_RATIO);
     expect(result.calm).toBe(true);
   });
 
-  it("accepts one candle between the previous and relaxed maximum range limits", () => {
+  it("does not reject an otherwise calm window because of one relative range outlier", () => {
     const { series, impulseStartIndex } = seriesWithPrePumpWindow("single-range-spike");
     const result = evaluatePrePumpCalm(series, impulseStartIndex);
 
-    expect(result.maxRangeRatio).toBeGreaterThanOrEqual(2);
-    expect(result.maxRangeRatio).toBeLessThan(MAX_PRE_PUMP_CANDLE_RANGE_RATIO);
+    expect(result.maxRangeRatio).toBeGreaterThan(3);
+    expect(result.rangePct).toBeLessThanOrEqual(MAX_PRE_PUMP_RANGE_PCT);
+    expect(result.pathPct).toBeLessThanOrEqual(MAX_PRE_PUMP_PATH_PCT);
     expect(result.calm).toBe(true);
   });
 
@@ -134,7 +134,7 @@ describe("evaluatePrePumpCalm", () => {
     const { series, impulseStartIndex } = seriesWithPrePumpWindow("moderate-volume");
     const result = evaluatePrePumpCalm(series, impulseStartIndex);
 
-    expect(result.medianVolumeRatio).toBeGreaterThan(1.2);
+    expect(result.medianVolumeRatio).toBeGreaterThan(1.5);
     expect(result.medianVolumeRatio).toBeLessThanOrEqual(MAX_PRE_PUMP_MEDIAN_VOLUME_RATIO);
     expect(result.calm).toBe(true);
   });
