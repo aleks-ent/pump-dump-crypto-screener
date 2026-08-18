@@ -15,7 +15,6 @@ const EVENT_FOLLOWUP_MS = 15 * 60_000;
 export interface TelegramChartImage {
   buffer: Buffer;
   filename: string;
-  caption: string;
 }
 
 export type TelegramChartWindowLoader = (
@@ -233,6 +232,5 @@ export async function createTelegramChartImage(
   return {
     buffer,
     filename: safeFilename(event.coin),
-    caption: `<b>${escapeXml(event.coin)} · 5m chart</b>`,
   };
 }

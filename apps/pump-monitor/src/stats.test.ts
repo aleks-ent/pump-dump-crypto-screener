@@ -16,6 +16,7 @@ import {
   sendEpisodeAlerts,
   sendTelegramMessage,
   sendTelegramPhoto,
+  editMessageCaption,
   editMessageText,
 } from "./telegram.js";
 import { buildClassificationKeyboard } from "./telegram-callback.js";
@@ -288,8 +289,9 @@ describe("Telegram message delivery", () => {
           {
             buffer: Buffer.from([137, 80, 78, 71]),
             filename: "FUEL-USDT-5m.png",
-            caption: "<b>FUEL/USDT · 5m chart</b>",
           },
+          "<b>New pump detected</b>",
+          { replyMarkup: buildClassificationKeyboard("fuel-event") },
         ),
       ).resolves.toBe(77);
     } finally {
@@ -301,8 +303,11 @@ describe("Telegram message delivery", () => {
     expect(init.headers).toBeUndefined();
     const form = init.body as FormData;
     expect(form.get("chat_id")).toBe("public-user");
-    expect(form.get("caption")).toBe("<b>FUEL/USDT · 5m chart</b>");
+    expect(form.get("caption")).toBe("<b>New pump detected</b>");
     expect(form.get("parse_mode")).toBe("HTML");
+    expect(JSON.parse(String(form.get("reply_markup")))).toEqual(
+      buildClassificationKeyboard("fuel-event"),
+    );
     const photo = form.get("photo") as File;
     expect(photo.name).toBe("FUEL-USDT-5m.png");
     expect(photo.type).toBe("image/png");
@@ -330,6 +335,31 @@ describe("Telegram message delivery", () => {
     expect(body).not.toHaveProperty("disable_web_page_preview");
   });
 
+  it("edits alert captions and preserves their voting keyboard", async () => {
+    const fetchMock = mockTelegramSuccess();
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await editMessageCaption(
+        { botToken: "token" },
+        "public-user",
+        42,
+        "Votes: 📈 1 · 📉 0 · ⚪ 0",
+        { replyMarkup: buildClassificationKeyboard("fuel-event") },
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/editMessageCaption");
+    const body = JSON.parse(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body),
+    ) as Record<string, unknown>;
+    expect(body.caption).toBe("Votes: 📈 1 · 📉 0 · ⚪ 0");
+    expect(body.reply_markup).toEqual(buildClassificationKeyboard("fuel-event"));
+    expect(body).not.toHaveProperty("link_preview_options");
+  });
+
   it("adds voting buttons for every alert recipient", async () => {
     const client = createMemoryDbClient();
     const repo = new PumpRepository(client);
@@ -353,10 +383,20 @@ describe("Telegram message delivery", () => {
         [],
       );
       expect(publicAlerts).toEqual([
-        { episodeId: pump.index, chatId: "public-user", messageId: 100 },
+        {
+          episodeId: pump.index,
+          chatId: "public-user",
+          messageId: 100,
+          messageKind: "text",
+        },
       ]);
       expect(adminAlerts).toEqual([
-        { episodeId: pump.index, chatId: "admin-user", messageId: 101 },
+        {
+          episodeId: pump.index,
+          chatId: "admin-user",
+          messageId: 101,
+          messageKind: "text",
+        },
       ]);
     } finally {
       vi.unstubAllGlobals();
@@ -373,7 +413,7 @@ describe("Telegram message delivery", () => {
     expect(String(publicBody.text)).not.toContain("Votes:");
   });
 
-  it("records the text alert before attaching its chart photo", async () => {
+  it("sends and records one chart message with alert caption and voting buttons", async () => {
     const client = createMemoryDbClient();
     const repo = new PumpRepository(client);
     await repo.applySchema();
@@ -383,7 +423,6 @@ describe("Telegram message delivery", () => {
     const pump = newPumps[0]!;
     const fetchMock = mockTelegramSuccess(500);
     const onSent = vi.fn(async () => undefined);
-    const onChartSent = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
     try {
@@ -399,31 +438,41 @@ describe("Telegram message delivery", () => {
                 {
                   buffer: Buffer.from([137, 80, 78, 71]),
                   filename: "FUEL-USDT-5m.png",
-                  caption: "<b>FUEL/USDT · 5m chart</b>",
                 },
               ],
             ]),
             onSent,
-            onChartSent,
           },
         ),
       ).resolves.toEqual([
-        { episodeId: pump.index, chatId: "public-user", messageId: 500 },
+        {
+          episodeId: pump.index,
+          chatId: "public-user",
+          messageId: 500,
+          messageKind: "photo",
+        },
       ]);
     } finally {
       vi.unstubAllGlobals();
     }
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/sendMessage");
-    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/sendPhoto");
-    expect(onChartSent).toHaveBeenCalledWith(pump, 501);
-    expect(onSent.mock.invocationCallOrder[0]).toBeLessThan(
-      fetchMock.mock.invocationCallOrder[1]!,
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/sendPhoto");
+    const form = (fetchMock.mock.calls[0]?.[1] as RequestInit).body as FormData;
+    expect(String(form.get("caption"))).toContain("<b>New pump detected</b>");
+    expect(String(form.get("caption"))).toContain("FUEL/USDT");
+    expect(JSON.parse(String(form.get("reply_markup")))).toEqual(
+      buildClassificationKeyboard(pump.index),
     );
+    expect(onSent).toHaveBeenCalledWith({
+      episodeId: pump.index,
+      chatId: "public-user",
+      messageId: 500,
+      messageKind: "photo",
+    });
   });
 
-  it("keeps the text alert successful when the chart upload fails", async () => {
+  it("falls back to one text alert when the chart upload fails", async () => {
     const client = createMemoryDbClient();
     const repo = new PumpRepository(client);
     await repo.applySchema();
@@ -434,14 +483,14 @@ describe("Telegram message delivery", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ ok: true, result: { message_id: 900 } }),
-      })
-      .mockResolvedValueOnce({
         ok: false,
         status: 429,
         text: async () => JSON.stringify({ error_code: 429, description: "Too Many Requests" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, result: { message_id: 900 } }),
       });
     const onChartError = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -459,7 +508,6 @@ describe("Telegram message delivery", () => {
                 {
                   buffer: Buffer.from([137, 80, 78, 71]),
                   filename: "FUEL-USDT-5m.png",
-                  caption: "<b>FUEL/USDT · 5m chart</b>",
                 },
               ],
             ]),
@@ -467,7 +515,12 @@ describe("Telegram message delivery", () => {
           },
         ),
       ).resolves.toEqual([
-        { episodeId: pump.index, chatId: "public-user", messageId: 900 },
+        {
+          episodeId: pump.index,
+          chatId: "public-user",
+          messageId: 900,
+          messageKind: "text",
+        },
       ]);
     } finally {
       vi.unstubAllGlobals();
@@ -477,6 +530,9 @@ describe("Telegram message delivery", () => {
       pump,
       expect.objectContaining({ method: "sendPhoto", errorCode: 429 }),
     );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/sendPhoto");
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/sendMessage");
   });
 
   it("sends every event individually even above the old detail limit", async () => {

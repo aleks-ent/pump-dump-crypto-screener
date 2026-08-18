@@ -121,7 +121,6 @@ describe("createTelegramChartImage", () => {
       { dataDir: "/srv/screener/data/market_stats" },
     );
     expect(image.filename).toBe("FUEL-USDT-5m.png");
-    expect(image.caption).toBe("<b>FUEL/USDT · 5m chart</b>");
     expect([...image.buffer.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
     await expect(sharp(image.buffer).metadata()).resolves.toMatchObject({
       format: "png",

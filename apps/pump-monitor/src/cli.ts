@@ -331,7 +331,6 @@ async function runMonitorPipeline(args: {
   let deliveredChats = 0;
   let failedChats = 0;
   let messageCount = 0;
-  let chartMessageCount = 0;
   for (const chatId of recipientIds) {
     try {
       const sentAlerts = await sendEpisodeAlerts(
@@ -345,17 +344,16 @@ async function runMonitorPipeline(args: {
             console.error(
               `WARNING: Telegram 5m chart upload failed for ${episode.coin} in chat ${chatId}: ${
                 error instanceof Error ? error.message : String(error)
-              }; text alert was sent`,
+              }; falling back to a text-only alert`,
             );
-          },
-          onChartSent: () => {
-            chartMessageCount += 1;
           },
           onSent: async (alert) => {
             await votingRepo.recordMessage(
               alert.episodeId,
               alert.chatId,
               alert.messageId,
+              undefined,
+              alert.messageKind,
             );
           },
         },
@@ -397,7 +395,7 @@ async function runMonitorPipeline(args: {
   }
 
   console.error(
-    `Telegram alerts sent to ${deliveredChats}/${recipientIds.length} recipient(s) for ${pumpsToAlert.length} new pump(s) and ${currentDumps.length} new dump(s) (${messageCount} text message${messageCount === 1 ? "" : "s"}, ${chartMessageCount} chart photo${chartMessageCount === 1 ? "" : "s"}${failedChats > 0 ? `, ${failedChats} failed chat(s)` : ""})`,
+    `Telegram alerts sent to ${deliveredChats}/${recipientIds.length} recipient(s) for ${pumpsToAlert.length} new pump(s) and ${currentDumps.length} new dump(s) (${messageCount} message${messageCount === 1 ? "" : "s"}${failedChats > 0 ? `, ${failedChats} failed chat(s)` : ""})`,
   );
 }
 

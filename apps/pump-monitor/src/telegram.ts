@@ -5,6 +5,7 @@ import type {
   PumpClassification,
   StoredPump,
   TelegramEpisodeVoteCounts,
+  TelegramMessageKind,
 } from "@screener/db";
 import { normalizeTelegramChatId } from "./telegram-subscribers.js";
 import {
@@ -59,6 +60,12 @@ export interface SentEpisodeAlert {
   episodeId: string;
   chatId: string;
   messageId: number;
+  messageKind: TelegramMessageKind;
+}
+
+interface DeliveredEpisodeAlert {
+  messageId: number;
+  messageKind: TelegramMessageKind;
 }
 
 export class TelegramApiError extends Error {
@@ -534,6 +541,8 @@ export async function sendTelegramMessage(
 export async function sendTelegramPhoto(
   config: TelegramConfig,
   photo: TelegramChartImage,
+  caption: string,
+  opts?: { replyMarkup?: InlineKeyboardMarkup },
 ): Promise<number> {
   const form = new FormData();
   form.set("chat_id", config.chatId);
@@ -542,8 +551,11 @@ export async function sendTelegramPhoto(
     new Blob([new Uint8Array(photo.buffer)], { type: "image/png" }),
     photo.filename,
   );
-  form.set("caption", photo.caption);
+  form.set("caption", caption);
   form.set("parse_mode", "HTML");
+  if (opts?.replyMarkup) {
+    form.set("reply_markup", JSON.stringify(opts.replyMarkup));
+  }
 
   const response = await telegramRequest(config, "sendPhoto", {
     method: "POST",
@@ -581,21 +593,49 @@ export async function sendTelegramPhoto(
   return (payload.result as { message_id: number }).message_id;
 }
 
+async function sendEpisodeAlertMessage(
+  config: TelegramConfig,
+  episode: StoredPump,
+  opts?: {
+    voteCounts?: TelegramEpisodeVoteCounts;
+    votingButtons?: boolean;
+    chartImage?: TelegramChartImage;
+    onChartError?: (episode: StoredPump, error: unknown) => void;
+  },
+): Promise<DeliveredEpisodeAlert> {
+  const text = formatVotedEpisodeAlertMessage(episode, opts?.voteCounts);
+  const messageOptions = opts?.votingButtons !== false
+    ? { replyMarkup: buildClassificationKeyboard(episode.index) }
+    : undefined;
+
+  if (opts?.chartImage) {
+    try {
+      return {
+        messageId: await sendTelegramPhoto(config, opts.chartImage, text, messageOptions),
+        messageKind: "photo",
+      };
+    } catch (error) {
+      opts.onChartError?.(episode, error);
+    }
+  }
+
+  return {
+    messageId: await sendTelegramMessage(config, text, messageOptions),
+    messageKind: "text",
+  };
+}
+
 export async function sendPumpAlertMessage(
   config: TelegramConfig,
   pump: StoredPump,
   opts?: {
     voteCounts?: TelegramEpisodeVoteCounts;
     votingButtons?: boolean;
+    chartImage?: TelegramChartImage;
+    onChartError?: (episode: StoredPump, error: unknown) => void;
   },
 ): Promise<number> {
-  return sendTelegramMessage(
-    config,
-    formatVotedEpisodeAlertMessage(pump, opts?.voteCounts),
-    opts?.votingButtons !== false
-      ? { replyMarkup: buildClassificationKeyboard(pump.index) }
-      : undefined,
-  );
+  return (await sendEpisodeAlertMessage(config, pump, opts)).messageId;
 }
 
 export async function sendDumpAlertMessage(
@@ -604,15 +644,11 @@ export async function sendDumpAlertMessage(
   opts?: {
     voteCounts?: TelegramEpisodeVoteCounts;
     votingButtons?: boolean;
+    chartImage?: TelegramChartImage;
+    onChartError?: (episode: StoredPump, error: unknown) => void;
   },
 ): Promise<number> {
-  return sendTelegramMessage(
-    config,
-    formatVotedEpisodeAlertMessage(dump, opts?.voteCounts),
-    opts?.votingButtons !== false
-      ? { replyMarkup: buildClassificationKeyboard(dump.index) }
-      : undefined,
-  );
+  return (await sendEpisodeAlertMessage(config, dump, opts)).messageId;
 }
 
 export async function sendPumpAlert(
@@ -626,22 +662,6 @@ export async function sendPumpAlert(
   return pumps.length;
 }
 
-async function sendEpisodeChart(
-  config: TelegramConfig,
-  episode: StoredPump,
-  image: TelegramChartImage | undefined,
-  onError: ((episode: StoredPump, error: unknown) => void) | undefined,
-  onSent: ((episode: StoredPump, messageId: number) => void) | undefined,
-): Promise<void> {
-  if (!image) return;
-  try {
-    const messageId = await sendTelegramPhoto(config, image);
-    onSent?.(episode, messageId);
-  } catch (error) {
-    onError?.(episode, error);
-  }
-}
-
 export async function sendEpisodeAlerts(
   config: TelegramConfig,
   pumps: StoredPump[],
@@ -651,42 +671,39 @@ export async function sendEpisodeAlerts(
     votingButtons?: boolean;
     chartImagesByEpisode?: ReadonlyMap<string, TelegramChartImage>;
     onChartError?: (episode: StoredPump, error: unknown) => void;
-    onChartSent?: (episode: StoredPump, messageId: number) => void;
     onSent?: (alert: SentEpisodeAlert) => Promise<void>;
   },
 ): Promise<SentEpisodeAlert[]> {
   const sent: SentEpisodeAlert[] = [];
   for (const pump of pumps) {
-    const messageId = await sendPumpAlertMessage(config, pump, {
+    const delivered = await sendEpisodeAlertMessage(config, pump, {
       voteCounts: opts?.voteCountsByEpisode?.get(pump.index),
       votingButtons: opts?.votingButtons,
+      chartImage: opts?.chartImagesByEpisode?.get(pump.index),
+      onChartError: opts?.onChartError,
     });
-    const alert = { episodeId: pump.index, chatId: config.chatId, messageId };
+    const alert = {
+      episodeId: pump.index,
+      chatId: config.chatId,
+      ...delivered,
+    };
     sent.push(alert);
     await opts?.onSent?.(alert);
-    await sendEpisodeChart(
-      config,
-      pump,
-      opts?.chartImagesByEpisode?.get(pump.index),
-      opts?.onChartError,
-      opts?.onChartSent,
-    );
   }
   for (const dump of dumps) {
-    const messageId = await sendDumpAlertMessage(config, dump, {
+    const delivered = await sendEpisodeAlertMessage(config, dump, {
       voteCounts: opts?.voteCountsByEpisode?.get(dump.index),
       votingButtons: opts?.votingButtons,
+      chartImage: opts?.chartImagesByEpisode?.get(dump.index),
+      onChartError: opts?.onChartError,
     });
-    const alert = { episodeId: dump.index, chatId: config.chatId, messageId };
+    const alert = {
+      episodeId: dump.index,
+      chatId: config.chatId,
+      ...delivered,
+    };
     sent.push(alert);
     await opts?.onSent?.(alert);
-    await sendEpisodeChart(
-      config,
-      dump,
-      opts?.chartImagesByEpisode?.get(dump.index),
-      opts?.onChartError,
-      opts?.onChartSent,
-    );
   }
   return sent;
 }
@@ -715,6 +732,22 @@ export async function editMessageText(
     text,
     parse_mode: "HTML",
     link_preview_options: { is_disabled: true },
+    reply_markup: opts?.replyMarkup,
+  });
+}
+
+export async function editMessageCaption(
+  config: TelegramApiConfig,
+  chatId: string,
+  messageId: number,
+  caption: string,
+  opts?: { replyMarkup?: InlineKeyboardMarkup },
+): Promise<void> {
+  await telegramPost(config, "editMessageCaption", {
+    chat_id: chatId,
+    message_id: messageId,
+    caption,
+    parse_mode: "HTML",
     reply_markup: opts?.replyMarkup,
   });
 }

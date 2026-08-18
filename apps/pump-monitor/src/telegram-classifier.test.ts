@@ -5,6 +5,7 @@ import {
   PumpRepository,
   TelegramEpisodeVotingRepository,
   TelegramSubscriberRepository,
+  type TelegramMessageKind,
 } from "@screener/db";
 import { encodeClassificationCallback } from "./telegram-callback.js";
 import {
@@ -40,7 +41,7 @@ function mockTelegramSuccess() {
   });
 }
 
-async function setupVotingRepos(): Promise<
+async function setupVotingRepos(messageKind: TelegramMessageKind = "text"): Promise<
   TelegramBotRepositories & { episodeId: string }
 > {
   const client = createMemoryDbClient();
@@ -60,12 +61,14 @@ async function setupVotingRepos(): Promise<
     "36772199",
     10,
     "2026-06-11T10:02:00.000Z",
+    messageKind,
   );
   await votingRepo.recordMessage(
     episodeId,
     "12345678",
     20,
     "2026-06-11T10:03:00.000Z",
+    messageKind,
   );
 
   return { pumpRepo, subscriberRepo, votingRepo, episodeId };
@@ -115,8 +118,15 @@ describe("Telegram classifier chat", () => {
     });
   });
 
-  it("accepts subscriber votes and edits all recorded event messages", async () => {
-    const repos = await setupVotingRepos();
+  it("edits mixed photo and text deliveries with the matching Telegram method", async () => {
+    const repos = await setupVotingRepos("photo");
+    await repos.votingRepo.recordMessage(
+      repos.episodeId,
+      "36772199",
+      10,
+      "2026-06-11T10:02:00.000Z",
+      "text",
+    );
     const fetchMock = mockTelegramSuccess();
     vi.stubGlobal("fetch", fetchMock);
 
@@ -129,7 +139,7 @@ describe("Telegram classifier chat", () => {
         {
           id: "callback-2",
           data: encodeClassificationCallback("dump", repos.episodeId),
-          message: { message_id: 20, chat: { id: 12345678 } },
+          message: { message_id: 20, photo: [{}], chat: { id: 12345678 } },
         },
         vi.fn(),
         repos,
@@ -145,19 +155,28 @@ describe("Telegram classifier chat", () => {
     });
     expect(await repos.pumpRepo.getClassification(repos.episodeId)).toBeNull();
 
-    const editCalls = fetchMock.mock.calls.filter((call) =>
+    const captionCalls = fetchMock.mock.calls.filter((call) =>
+      String(call[0]).includes("editMessageCaption"),
+    );
+    const textCalls = fetchMock.mock.calls.filter((call) =>
       String(call[0]).includes("editMessageText"),
     );
-    expect(editCalls).toHaveLength(2);
-    for (const call of editCalls) {
-      const body = JSON.parse(String((call[1] as RequestInit).body)) as Record<
-        string,
-        unknown
-      >;
-      expect(body.text).toContain("Votes: 📈 0 · 📉 1 · ⚪ 0");
-      expect(body.reply_markup).toBeDefined();
-      expect(body.link_preview_options).toEqual({ is_disabled: true });
-    }
+    expect(captionCalls).toHaveLength(1);
+    expect(textCalls).toHaveLength(1);
+
+    const captionBody = JSON.parse(
+      String((captionCalls[0]![1] as RequestInit).body),
+    ) as Record<string, unknown>;
+    expect(captionBody.caption).toContain("Votes: 📈 0 · 📉 1 · ⚪ 0");
+    expect(captionBody.reply_markup).toBeDefined();
+    expect(captionBody).not.toHaveProperty("link_preview_options");
+
+    const textBody = JSON.parse(
+      String((textCalls[0]![1] as RequestInit).body),
+    ) as Record<string, unknown>;
+    expect(textBody.text).toContain("Votes: 📈 0 · 📉 1 · ⚪ 0");
+    expect(textBody.reply_markup).toBeDefined();
+    expect(textBody.link_preview_options).toEqual({ is_disabled: true });
   });
 
   it("counts admin votes and syncs the legacy classification field", async () => {
