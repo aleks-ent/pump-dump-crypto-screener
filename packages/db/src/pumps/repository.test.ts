@@ -69,6 +69,27 @@ describe("applySchema", () => {
     expect(newPumps[0]!.episodeType).toBe("pump");
   });
 
+  it("marks legacy Telegram alert references as text messages", async () => {
+    const client = createMemoryDbClient();
+    await client.execute(`
+      CREATE TABLE telegram_episode_messages (
+        episode_id TEXT NOT NULL,
+        chat_id    TEXT NOT NULL,
+        message_id INTEGER NOT NULL,
+        sent_at    TEXT NOT NULL,
+        PRIMARY KEY (episode_id, chat_id)
+      )
+    `);
+
+    await applySchema(client);
+
+    const columns = await client.execute(
+      "PRAGMA table_info(telegram_episode_messages)",
+    );
+    const messageKind = columns.rows.find((row) => row.name === "message_kind");
+    expect(messageKind).toMatchObject({ notnull: 1, dflt_value: "'text'" });
+  });
+
   it("updates the annotation category constraint without rewriting stored labels", async () => {
     const client = createMemoryDbClient();
     await applySchema(client);

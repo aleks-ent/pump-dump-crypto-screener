@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS telegram_episode_messages (
   episode_id TEXT NOT NULL,
   chat_id    TEXT NOT NULL,
   message_id INTEGER NOT NULL,
+  message_kind TEXT NOT NULL DEFAULT 'text' CHECK (message_kind IN ('text', 'photo')),
   sent_at    TEXT NOT NULL,
   PRIMARY KEY (episode_id, chat_id),
   FOREIGN KEY (episode_id) REFERENCES pumps(id) ON DELETE CASCADE,

@@ -36,6 +36,7 @@ export {
   TelegramEpisodeVotingRepository,
   type TelegramEpisodeMessage,
   type TelegramEpisodeVoteCounts,
+  type TelegramMessageKind,
 } from "./telegram-episode-voting/repository.js";
 export { importLegacyPumpIndex } from "./pumps/import-json.js";
 export type {

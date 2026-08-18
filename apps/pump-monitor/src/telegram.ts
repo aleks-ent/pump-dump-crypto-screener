@@ -5,12 +5,14 @@ import type {
   PumpClassification,
   StoredPump,
   TelegramEpisodeVoteCounts,
+  TelegramMessageKind,
 } from "@screener/db";
 import { normalizeTelegramChatId } from "./telegram-subscribers.js";
 import {
   buildClassificationKeyboard,
   classificationLabel,
 } from "./telegram-callback.js";
+import type { TelegramChartImage } from "./telegram-chart.js";
 
 export interface TelegramApiConfig {
   botToken: string;
@@ -58,6 +60,12 @@ export interface SentEpisodeAlert {
   episodeId: string;
   chatId: string;
   messageId: number;
+  messageKind: TelegramMessageKind;
+}
+
+interface DeliveredEpisodeAlert {
+  messageId: number;
+  messageKind: TelegramMessageKind;
 }
 
 export class TelegramApiError extends Error {
@@ -397,17 +405,13 @@ function chunkEpisodeMessages(
   );
 }
 
-async function telegramPost(
+async function telegramRequest(
   config: TelegramApiConfig,
   method: string,
-  body: Record<string, unknown>,
+  init: RequestInit,
 ): Promise<Response> {
   const url = `https://api.telegram.org/bot${config.botToken}/${method}`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const response = await fetch(url, init);
 
   if (!response.ok) {
     const text = await response.text();
@@ -432,6 +436,18 @@ async function telegramPost(
   }
 
   return response;
+}
+
+async function telegramPost(
+  config: TelegramApiConfig,
+  method: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  return telegramRequest(config, method, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 function telegramProfileDescription(chat: unknown): string | null {
@@ -522,21 +538,104 @@ export async function sendTelegramMessage(
   return (payload.result as { message_id: number }).message_id;
 }
 
+export async function sendTelegramPhoto(
+  config: TelegramConfig,
+  photo: TelegramChartImage,
+  caption: string,
+  opts?: { replyMarkup?: InlineKeyboardMarkup },
+): Promise<number> {
+  const form = new FormData();
+  form.set("chat_id", config.chatId);
+  form.set(
+    "photo",
+    new Blob([new Uint8Array(photo.buffer)], { type: "image/png" }),
+    photo.filename,
+  );
+  form.set("caption", caption);
+  form.set("parse_mode", "HTML");
+  if (opts?.replyMarkup) {
+    form.set("reply_markup", JSON.stringify(opts.replyMarkup));
+  }
+
+  const response = await telegramRequest(config, "sendPhoto", {
+    method: "POST",
+    body: form,
+  });
+  const payload = (await response.json()) as TelegramSuccessPayload;
+  if (payload.ok !== true) {
+    const errorCode =
+      typeof payload.error_code === "number" ? payload.error_code : response.status;
+    const description =
+      typeof payload.description === "string"
+        ? payload.description
+        : "Telegram sendPhoto returned ok=false";
+    throw new TelegramApiError(
+      "sendPhoto",
+      response.status,
+      errorCode,
+      description,
+    );
+  }
+
+  if (
+    payload.result == null ||
+    typeof payload.result !== "object" ||
+    typeof (payload.result as { message_id?: unknown }).message_id !== "number"
+  ) {
+    throw new TelegramApiError(
+      "sendPhoto",
+      response.status,
+      response.status,
+      "Telegram sendPhoto did not return a message_id",
+    );
+  }
+
+  return (payload.result as { message_id: number }).message_id;
+}
+
+async function sendEpisodeAlertMessage(
+  config: TelegramConfig,
+  episode: StoredPump,
+  opts?: {
+    voteCounts?: TelegramEpisodeVoteCounts;
+    votingButtons?: boolean;
+    chartImage?: TelegramChartImage;
+    onChartError?: (episode: StoredPump, error: unknown) => void;
+  },
+): Promise<DeliveredEpisodeAlert> {
+  const text = formatVotedEpisodeAlertMessage(episode, opts?.voteCounts);
+  const messageOptions = opts?.votingButtons !== false
+    ? { replyMarkup: buildClassificationKeyboard(episode.index) }
+    : undefined;
+
+  if (opts?.chartImage) {
+    try {
+      return {
+        messageId: await sendTelegramPhoto(config, opts.chartImage, text, messageOptions),
+        messageKind: "photo",
+      };
+    } catch (error) {
+      opts.onChartError?.(episode, error);
+    }
+  }
+
+  return {
+    messageId: await sendTelegramMessage(config, text, messageOptions),
+    messageKind: "text",
+  };
+}
+
 export async function sendPumpAlertMessage(
   config: TelegramConfig,
   pump: StoredPump,
   opts?: {
     voteCounts?: TelegramEpisodeVoteCounts;
     votingButtons?: boolean;
+    chartImage?: TelegramChartImage;
+    onChartError?: (episode: StoredPump, error: unknown) => void;
   },
 ): Promise<number> {
-  return sendTelegramMessage(
-    config,
-    formatVotedEpisodeAlertMessage(pump, opts?.voteCounts),
-    opts?.votingButtons !== false
-      ? { replyMarkup: buildClassificationKeyboard(pump.index) }
-      : undefined,
-  );
+  return (await sendEpisodeAlertMessage(config, pump, opts)).messageId;
 }
 
 export async function sendDumpAlertMessage(
@@ -545,15 +644,11 @@ export async function sendDumpAlertMessage(
   opts?: {
     voteCounts?: TelegramEpisodeVoteCounts;
     votingButtons?: boolean;
+    chartImage?: TelegramChartImage;
+    onChartError?: (episode: StoredPump, error: unknown) => void;
   },
 ): Promise<number> {
-  return sendTelegramMessage(
-    config,
-    formatVotedEpisodeAlertMessage(dump, opts?.voteCounts),
-    opts?.votingButtons !== false
-      ? { replyMarkup: buildClassificationKeyboard(dump.index) }
-      : undefined,
-  );
+  return (await sendEpisodeAlertMessage(config, dump, opts)).messageId;
 }
 
 export async function sendPumpAlert(
@@ -574,25 +669,39 @@ export async function sendEpisodeAlerts(
   opts?: {
     voteCountsByEpisode?: ReadonlyMap<string, TelegramEpisodeVoteCounts>;
     votingButtons?: boolean;
+    chartImagesByEpisode?: ReadonlyMap<string, TelegramChartImage>;
+    onChartError?: (episode: StoredPump, error: unknown) => void;
     onSent?: (alert: SentEpisodeAlert) => Promise<void>;
   },
 ): Promise<SentEpisodeAlert[]> {
   const sent: SentEpisodeAlert[] = [];
   for (const pump of pumps) {
-    const messageId = await sendPumpAlertMessage(config, pump, {
+    const delivered = await sendEpisodeAlertMessage(config, pump, {
       voteCounts: opts?.voteCountsByEpisode?.get(pump.index),
       votingButtons: opts?.votingButtons,
+      chartImage: opts?.chartImagesByEpisode?.get(pump.index),
+      onChartError: opts?.onChartError,
     });
-    const alert = { episodeId: pump.index, chatId: config.chatId, messageId };
+    const alert = {
+      episodeId: pump.index,
+      chatId: config.chatId,
+      ...delivered,
+    };
     sent.push(alert);
     await opts?.onSent?.(alert);
   }
   for (const dump of dumps) {
-    const messageId = await sendDumpAlertMessage(config, dump, {
+    const delivered = await sendEpisodeAlertMessage(config, dump, {
       voteCounts: opts?.voteCountsByEpisode?.get(dump.index),
       votingButtons: opts?.votingButtons,
+      chartImage: opts?.chartImagesByEpisode?.get(dump.index),
+      onChartError: opts?.onChartError,
     });
-    const alert = { episodeId: dump.index, chatId: config.chatId, messageId };
+    const alert = {
+      episodeId: dump.index,
+      chatId: config.chatId,
+      ...delivered,
+    };
     sent.push(alert);
     await opts?.onSent?.(alert);
   }
@@ -623,6 +732,22 @@ export async function editMessageText(
     text,
     parse_mode: "HTML",
     link_preview_options: { is_disabled: true },
+    reply_markup: opts?.replyMarkup,
+  });
+}
+
+export async function editMessageCaption(
+  config: TelegramApiConfig,
+  chatId: string,
+  messageId: number,
+  caption: string,
+  opts?: { replyMarkup?: InlineKeyboardMarkup },
+): Promise<void> {
+  await telegramPost(config, "editMessageCaption", {
+    chat_id: chatId,
+    message_id: messageId,
+    caption,
+    parse_mode: "HTML",
     reply_markup: opts?.replyMarkup,
   });
 }

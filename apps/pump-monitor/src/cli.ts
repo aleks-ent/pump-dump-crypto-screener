@@ -41,6 +41,10 @@ import {
   filterEpisodesSinceAlertCutoff,
   filterPumpsPastCooldown,
 } from "./alert-cooldown.js";
+import {
+  createTelegramChartImage,
+  type TelegramChartImage,
+} from "./telegram-chart.js";
 
 function loadPumpCandidates(path: string): PumpCandidate[] {
   const content = readFileSync(path, "utf-8");
@@ -305,6 +309,25 @@ async function runMonitorPipeline(args: {
     await subscriberRepo.listChatIds(),
   );
 
+  const chartImagesByEpisode = new Map<string, TelegramChartImage>();
+  for (const episode of [...pumpsToAlert, ...currentDumps]) {
+    try {
+      chartImagesByEpisode.set(
+        episode.index,
+        await createTelegramChartImage(episode, dataDir),
+      );
+    } catch (error) {
+      console.error(
+        `WARNING: could not prepare 5m Telegram chart for ${episode.coin}: ${
+          error instanceof Error ? error.message : String(error)
+        }; sending the text alert only`,
+      );
+    }
+  }
+  console.error(
+    `Prepared ${chartImagesByEpisode.size}/${pumpsToAlert.length + currentDumps.length} Telegram 5m chart(s)`,
+  );
+
   let deliveredChats = 0;
   let failedChats = 0;
   let messageCount = 0;
@@ -316,11 +339,21 @@ async function runMonitorPipeline(args: {
         currentDumps,
         {
           votingButtons: true,
+          chartImagesByEpisode,
+          onChartError: (episode, error) => {
+            console.error(
+              `WARNING: Telegram 5m chart upload failed for ${episode.coin} in chat ${chatId}: ${
+                error instanceof Error ? error.message : String(error)
+              }; falling back to a text-only alert`,
+            );
+          },
           onSent: async (alert) => {
             await votingRepo.recordMessage(
               alert.episodeId,
               alert.chatId,
               alert.messageId,
+              undefined,
+              alert.messageKind,
             );
           },
         },

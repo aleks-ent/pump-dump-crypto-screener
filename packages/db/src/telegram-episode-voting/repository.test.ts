@@ -101,6 +101,7 @@ describe("TelegramEpisodeVotingRepository", () => {
       "111",
       11,
       "2026-06-11T10:04:00.000Z",
+      "photo",
     );
 
     expect(await votingRepo.listMessages(episodeId)).toEqual([
@@ -108,12 +109,14 @@ describe("TelegramEpisodeVotingRepository", () => {
         episodeId,
         chatId: "222",
         messageId: 20,
+        messageKind: "text",
         sentAt: "2026-06-11T10:03:00.000Z",
       },
       {
         episodeId,
         chatId: "111",
         messageId: 11,
+        messageKind: "photo",
         sentAt: "2026-06-11T10:04:00.000Z",
       },
     ]);

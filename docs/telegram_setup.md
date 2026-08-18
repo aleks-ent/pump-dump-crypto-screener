@@ -16,6 +16,13 @@ Subscribers can use `/stats`, `/runs`, and `/about`. Every alert includes **📈
 anyone votes, the bot edits every recorded alert message for that event with compact
 totals like `Votes: 📈 3 · 📉 1 · ⚪ 0`.
 
+The monitor also renders a 5-minute candlestick and volume chart for each new event.
+Each alert is one Telegram photo message: the existing alert details are its caption,
+and the voting buttons remain attached to the same message. The chart uses the market
+data already fetched by the monitor and falls back to the event exchange's public API
+when local coverage is incomplete. A chart load, render, or upload failure is logged;
+the monitor falls back to the same alert as a text-only message.
+
 `classifierTelegramChatId` is the always-subscribed admin chat. Its vote also updates
 the legacy episode `classification` field so existing stats/history behavior remains
 compatible.

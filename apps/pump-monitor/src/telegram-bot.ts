@@ -9,6 +9,7 @@ import {
   TelegramEpisodeVotingRepository,
   TelegramSubscriberRepository,
   type PumpClassification,
+  type TelegramMessageKind,
 } from "@screener/db";
 import { findRepoRoot, resolveRepoPath } from "@screener/core";
 import {
@@ -25,6 +26,7 @@ import {
 } from "./telegram-subscribers.js";
 import {
   answerCallbackQuery,
+  editMessageCaption,
   editMessageText,
   formatAboutMessage,
   formatMonitorRunsMessage,
@@ -61,6 +63,7 @@ interface TelegramUpdate {
     data?: string;
     message?: {
       message_id: number;
+      photo?: unknown[];
       chat: { id: number };
     };
   };
@@ -356,6 +359,9 @@ export async function handleClassificationCallback(
     const voteCounts = await votingRepo.countVotes(parsed.pumpId);
     const text = formatVotedEpisodeAlertMessage(episode, voteCounts);
     const replyMarkup = buildClassificationKeyboard(parsed.pumpId);
+    const currentMessageKind: TelegramMessageKind = callbackQuery.message?.photo?.length
+      ? "photo"
+      : "text";
     const recordedMessages = await votingRepo.listMessages(parsed.pumpId);
     const targets = [...recordedMessages];
     const hasCurrentMessage = targets.some(
@@ -368,18 +374,24 @@ export async function handleClassificationCallback(
         parsed.pumpId,
         chatId,
         callbackQuery.message.message_id,
+        undefined,
+        currentMessageKind,
       );
       targets.push({
         episodeId: parsed.pumpId,
         chatId,
         messageId: callbackQuery.message.message_id,
+        messageKind: currentMessageKind,
         sentAt: new Date().toISOString(),
       });
     }
 
     for (const message of targets) {
       try {
-        await editMessageText(
+        const editAlert = message.messageKind === "photo"
+          ? editMessageCaption
+          : editMessageText;
+        await editAlert(
           config.telegram,
           message.chatId,
           message.messageId,
