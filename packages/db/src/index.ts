@@ -39,6 +39,15 @@ export {
   type TelegramMessageKind,
 } from "./telegram-episode-voting/repository.js";
 export { importLegacyPumpIndex } from "./pumps/import-json.js";
+export {
+  DEFAULT_PUMP_RETENTION_DAYS,
+  inspectPumpRetention,
+  parsePumpRetentionDays,
+  prunePumpsBefore,
+  pumpRetentionCutoffMs,
+  type PumpRetentionCounts,
+  type PumpRetentionResult,
+} from "./pumps/retention.js";
 export type {
   PumpClassification,
   EpisodeType,

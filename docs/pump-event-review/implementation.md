@@ -45,6 +45,30 @@ Turso retention policy before the first production migration.
 After migration, verify that an existing pump can be opened, an annotation can be
 created, and the same annotation can be edited without producing a duplicate row.
 
+## Database retention
+
+The reviewer keeps 365 days of pump and dump events. The weekly retention job deletes
+older `pumps` rows and their related annotations, Telegram votes, and Telegram message
+references in one database transaction. The comparison uses `start_ms < cutoff`, so
+events exactly on the cutoff remain available.
+
+Preview the exact counts before enabling or changing the scheduled job:
+
+```bash
+pnpm db:prune-pumps
+PUMP_RETAIN_DAYS=365 pnpm db:prune-pumps -- --apply
+```
+
+The command is always a dry run without `--apply`. `PUMP_RETAIN_DAYS` must be a positive
+integer and defaults to 365. Before applying a prune, download the complete reviewed
+JSON or CSV dataset from `/review` and confirm the normal Turso backup is available.
+Use `PUMP_RETAIN_DAYS=365` explicitly in production cron so a future default change
+cannot silently alter the deployed policy.
+
+After applying, run the command again without `--apply`; every reported count should be
+zero. The delete bounds the review table size but does not reclaim or compact Turso
+storage immediately.
+
 ## Historical market data
 
 Charts first read local files under `data/market_stats/`. When that four-hour event
@@ -147,6 +171,7 @@ back the database by deleting annotation data.
 
 - [ ] `pnpm test` and `pnpm build` pass on the release revision.
 - [ ] `pnpm db:bootstrap` completes against the target database.
+- [ ] `pnpm db:prune-pumps` reports the expected retention cutoff and row counts.
 - [ ] `/healthz` returns `200` after restart.
 - [ ] An unauthenticated `/review` request returns `401` when auth is enabled.
 - [ ] Valid credentials open the review workspace and APIs.

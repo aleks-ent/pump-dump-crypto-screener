@@ -190,7 +190,7 @@ Nothing in the pipeline deletes anything — every run only appends. On a long-l
 
 `reports/pump_detector/` is usually the bulk of it. A fresh run directory is created on every scan, and PM2 restarts `pump-monitor` the moment it exits, so this is several GB/day of debug output that no code path reads.
 
-Scanning itself only needs `pump.days` of candles. Longer retention exists for the `/review` UI, which reads `archives/`, `api_fallback/`, and `extracted/` to draw charts for past episodes — below the retention horizon those charts fall back to TradingView, while the stored pump rows in Turso are unaffected.
+Scanning itself only needs `pump.days` of candles. Longer retention exists for the `/review` UI, which reads `archives/`, `api_fallback/`, and `extracted/` to draw charts for past episodes — below the retention horizon those charts fall back to TradingView, while stored pump rows remain available until the database retention cutoff.
 
 [`scripts/prune-market-data.sh`](scripts/prune-market-data.sh) prunes both by age. It is dry-run by default:
 
@@ -206,6 +206,35 @@ Keep it from coming back with a daily cron:
 ```bash
 (crontab -l 2>/dev/null; echo "17 4 * * * cd /path/to/repo && ./scripts/prune-market-data.sh --apply >> /tmp/prune-market-data.log 2>&1") | crontab -
 ```
+
+#### Database event retention
+
+The production retention policy keeps **365 days** of pump/dump events in Turso. Rows
+whose `pumps.start_ms` is older than the cutoff are deleted together with their
+`pump_annotations`, Telegram votes, and Telegram message references. Export any
+reviewed labels that must be kept longer from `/review` and take a database backup
+before applying the prune.
+
+The database command is also dry-run by default and reads the same Turso credentials
+as the other database commands:
+
+```bash
+pnpm db:prune-pumps                                      # preview the default 365-day cutoff
+PUMP_RETAIN_DAYS=180 pnpm db:prune-pumps                 # preview a custom cutoff
+PUMP_RETAIN_DAYS=365 pnpm db:prune-pumps -- --apply      # delete in one transaction
+```
+
+Run the preview after every deployment. Once its counts are understood and the backup
+policy is in place, schedule the apply command weekly:
+
+```bash
+(crontab -l 2>/dev/null; echo "47 4 * * 0 cd /path/to/repo && PUMP_RETAIN_DAYS=365 pnpm db:prune-pumps -- --apply >> /tmp/prune-pumps.log 2>&1") | crontab -
+```
+
+The pruning command applies the current schema before inspecting rows, so existing
+databases also receive the case-insensitive `leading_exchange` filter index. Run
+`pnpm db:bootstrap` independently during normal deployments so migration failures are
+visible before the web process is restarted.
 
 PM2's own logs accumulate separately from `data/`. Check with `du -sh ~/.pm2/logs`; `pm2 flush` clears them and `pm2 install pm2-logrotate` prevents recurrence.
 
@@ -243,6 +272,7 @@ Useful flags: `--days`, `--exchanges`, `--quote-currencies`, `--discover`, `--js
 - `ecosystem.config.cjs` — PM2 process definitions (`pump-monitor`, `pump-bot`, `pump-web`)
 - `config.js` — Turso, Telegram bot token, `pump.*`, `fetch.intervals` (copy from `config.example.js`)
 - `scripts/prune-market-data.sh` — age-based cleanup for `data/market_stats/`
+- `pnpm db:prune-pumps` — dry-run-first retention cleanup for Turso pump events
 - `packages/core` — HTTP client, config, pull window
 - `packages/exchanges` — exchange adapters
 - `packages/storage` — NDJSON, gaps, manifest I/O
