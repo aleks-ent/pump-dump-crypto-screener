@@ -18,6 +18,7 @@
     "pump:web": "pnpm --filter pump-monitor run web",
     "telegram:backfill-subscribers": "pnpm --filter pump-monitor run backfill:telegram-subscribers",
     "db:bootstrap": "pnpm --filter @screener/db run bootstrap",
+    "db:prune-pumps": "pnpm --filter @screener/db run prune-pumps",
     "pump:import-index": "pnpm --filter @screener/db run import-pump-index"
   },
   "devDependencies": {

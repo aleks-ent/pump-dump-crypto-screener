@@ -25,6 +25,8 @@ CREATE INDEX IF NOT EXISTS idx_pumps_start_ms ON pumps(start_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_pumps_peak_score ON pumps(peak_score);
 CREATE INDEX IF NOT EXISTS idx_pumps_classification ON pumps(classification);
 CREATE INDEX IF NOT EXISTS idx_pumps_episode_type ON pumps(episode_type);
+CREATE INDEX IF NOT EXISTS idx_pumps_leading_exchange
+  ON pumps(leading_exchange COLLATE NOCASE);
 
 CREATE TABLE IF NOT EXISTS pump_annotations (
   id         TEXT PRIMARY KEY NOT NULL,

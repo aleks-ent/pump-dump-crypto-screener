@@ -33,6 +33,27 @@ describe("pumpIndexKey", () => {
 });
 
 describe("applySchema", () => {
+  it("uses the leading exchange index for review filters", async () => {
+    const client = createMemoryDbClient();
+    await applySchema(client);
+
+    const plan = await client.execute({
+      sql: `
+        EXPLAIN QUERY PLAN
+        SELECT COUNT(*)
+        FROM pumps p
+        LEFT JOIN pump_annotations a
+          ON a.event_id = p.id AND a.source = 'human'
+        WHERE p.episode_type = 'pump'
+          AND p.leading_exchange = ? COLLATE NOCASE
+      `,
+      args: ["BINANCE"],
+    });
+    const details = plan.rows.map((row) => String(row.detail)).join("\n");
+
+    expect(details).toContain("idx_pumps_leading_exchange");
+  });
+
   it("migrates legacy pumps table missing episode_type", async () => {
     const client = createMemoryDbClient();
     await client.execute(`

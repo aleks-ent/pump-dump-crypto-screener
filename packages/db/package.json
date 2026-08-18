@@ -10,9 +10,10 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/bootstrap-cli.ts src/import-cli.ts --format esm --dts --clean",
+    "build": "tsup src/index.ts src/bootstrap-cli.ts src/import-cli.ts src/prune-cli.ts --format esm --dts --clean",
     "bootstrap": "tsx src/bootstrap-cli.ts",
-    "import-pump-index": "tsx src/import-cli.ts"
+    "import-pump-index": "tsx src/import-cli.ts",
+    "prune-pumps": "tsx src/prune-cli.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",
