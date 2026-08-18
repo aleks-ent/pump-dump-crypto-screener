@@ -41,6 +41,10 @@ import {
   filterEpisodesSinceAlertCutoff,
   filterPumpsPastCooldown,
 } from "./alert-cooldown.js";
+import {
+  createTelegramChartImage,
+  type TelegramChartImage,
+} from "./telegram-chart.js";
 
 function loadPumpCandidates(path: string): PumpCandidate[] {
   const content = readFileSync(path, "utf-8");
@@ -305,9 +309,29 @@ async function runMonitorPipeline(args: {
     await subscriberRepo.listChatIds(),
   );
 
+  const chartImagesByEpisode = new Map<string, TelegramChartImage>();
+  for (const episode of [...pumpsToAlert, ...currentDumps]) {
+    try {
+      chartImagesByEpisode.set(
+        episode.index,
+        await createTelegramChartImage(episode, dataDir),
+      );
+    } catch (error) {
+      console.error(
+        `WARNING: could not prepare 5m Telegram chart for ${episode.coin}: ${
+          error instanceof Error ? error.message : String(error)
+        }; sending the text alert only`,
+      );
+    }
+  }
+  console.error(
+    `Prepared ${chartImagesByEpisode.size}/${pumpsToAlert.length + currentDumps.length} Telegram 5m chart(s)`,
+  );
+
   let deliveredChats = 0;
   let failedChats = 0;
   let messageCount = 0;
+  let chartMessageCount = 0;
   for (const chatId of recipientIds) {
     try {
       const sentAlerts = await sendEpisodeAlerts(
@@ -316,6 +340,17 @@ async function runMonitorPipeline(args: {
         currentDumps,
         {
           votingButtons: true,
+          chartImagesByEpisode,
+          onChartError: (episode, error) => {
+            console.error(
+              `WARNING: Telegram 5m chart upload failed for ${episode.coin} in chat ${chatId}: ${
+                error instanceof Error ? error.message : String(error)
+              }; text alert was sent`,
+            );
+          },
+          onChartSent: () => {
+            chartMessageCount += 1;
+          },
           onSent: async (alert) => {
             await votingRepo.recordMessage(
               alert.episodeId,
@@ -362,7 +397,7 @@ async function runMonitorPipeline(args: {
   }
 
   console.error(
-    `Telegram alerts sent to ${deliveredChats}/${recipientIds.length} recipient(s) for ${pumpsToAlert.length} new pump(s) and ${currentDumps.length} new dump(s) (${messageCount} message${messageCount === 1 ? "" : "s"}${failedChats > 0 ? `, ${failedChats} failed chat(s)` : ""})`,
+    `Telegram alerts sent to ${deliveredChats}/${recipientIds.length} recipient(s) for ${pumpsToAlert.length} new pump(s) and ${currentDumps.length} new dump(s) (${messageCount} text message${messageCount === 1 ? "" : "s"}, ${chartMessageCount} chart photo${chartMessageCount === 1 ? "" : "s"}${failedChats > 0 ? `, ${failedChats} failed chat(s)` : ""})`,
   );
 }
 

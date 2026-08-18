@@ -18,7 +18,8 @@
     "@screener/db": "workspace:*",
     "@screener/exchanges": "workspace:*",
     "@screener/pump-detector": "workspace:*",
-    "commander": "^12.1.0"
+    "commander": "^12.1.0",
+    "sharp": "^0.34.4"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

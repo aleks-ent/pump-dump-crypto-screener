@@ -15,6 +15,7 @@ import {
   normalizeTelegramChatId,
   sendEpisodeAlerts,
   sendTelegramMessage,
+  sendTelegramPhoto,
   editMessageText,
 } from "./telegram.js";
 import { buildClassificationKeyboard } from "./telegram-callback.js";
@@ -276,6 +277,37 @@ describe("Telegram message delivery", () => {
     expect(body).not.toHaveProperty("disable_web_page_preview");
   });
 
+  it("uploads a generated PNG using Telegram sendPhoto multipart form data", async () => {
+    const fetchMock = mockTelegramSuccess(77);
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await expect(
+        sendTelegramPhoto(
+          { botToken: "token", chatId: "public-user" },
+          {
+            buffer: Buffer.from([137, 80, 78, 71]),
+            filename: "FUEL-USDT-5m.png",
+            caption: "<b>FUEL/USDT · 5m chart</b>",
+          },
+        ),
+      ).resolves.toBe(77);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/sendPhoto");
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(init.headers).toBeUndefined();
+    const form = init.body as FormData;
+    expect(form.get("chat_id")).toBe("public-user");
+    expect(form.get("caption")).toBe("<b>FUEL/USDT · 5m chart</b>");
+    expect(form.get("parse_mode")).toBe("HTML");
+    const photo = form.get("photo") as File;
+    expect(photo.name).toBe("FUEL-USDT-5m.png");
+    expect(photo.type).toBe("image/png");
+  });
+
   it("disables link previews when editing messages", async () => {
     const fetchMock = mockTelegramSuccess();
     vi.stubGlobal("fetch", fetchMock);
@@ -339,6 +371,112 @@ describe("Telegram message delivery", () => {
     expect(publicBody.reply_markup).toEqual(buildClassificationKeyboard(pump.index));
     expect(adminBody.reply_markup).toEqual(buildClassificationKeyboard(pump.index));
     expect(String(publicBody.text)).not.toContain("Votes:");
+  });
+
+  it("records the text alert before attaching its chart photo", async () => {
+    const client = createMemoryDbClient();
+    const repo = new PumpRepository(client);
+    await repo.applySchema();
+    const { newPumps } = await repo.upsertPumpEpisodes([
+      samplePump("FUEL/USDT", Date.parse("2026-06-07T00:50:00.000Z"), 96),
+    ]);
+    const pump = newPumps[0]!;
+    const fetchMock = mockTelegramSuccess(500);
+    const onSent = vi.fn(async () => undefined);
+    const onChartSent = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await expect(
+        sendEpisodeAlerts(
+          { botToken: "token", chatId: "public-user" },
+          [pump],
+          [],
+          {
+            chartImagesByEpisode: new Map([
+              [
+                pump.index,
+                {
+                  buffer: Buffer.from([137, 80, 78, 71]),
+                  filename: "FUEL-USDT-5m.png",
+                  caption: "<b>FUEL/USDT · 5m chart</b>",
+                },
+              ],
+            ]),
+            onSent,
+            onChartSent,
+          },
+        ),
+      ).resolves.toEqual([
+        { episodeId: pump.index, chatId: "public-user", messageId: 500 },
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/sendMessage");
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/sendPhoto");
+    expect(onChartSent).toHaveBeenCalledWith(pump, 501);
+    expect(onSent.mock.invocationCallOrder[0]).toBeLessThan(
+      fetchMock.mock.invocationCallOrder[1]!,
+    );
+  });
+
+  it("keeps the text alert successful when the chart upload fails", async () => {
+    const client = createMemoryDbClient();
+    const repo = new PumpRepository(client);
+    await repo.applySchema();
+    const { newPumps } = await repo.upsertPumpEpisodes([
+      samplePump("FUEL/USDT", Date.parse("2026-06-07T00:50:00.000Z"), 96),
+    ]);
+    const pump = newPumps[0]!;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, result: { message_id: 900 } }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        text: async () => JSON.stringify({ error_code: 429, description: "Too Many Requests" }),
+      });
+    const onChartError = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await expect(
+        sendEpisodeAlerts(
+          { botToken: "token", chatId: "public-user" },
+          [pump],
+          [],
+          {
+            chartImagesByEpisode: new Map([
+              [
+                pump.index,
+                {
+                  buffer: Buffer.from([137, 80, 78, 71]),
+                  filename: "FUEL-USDT-5m.png",
+                  caption: "<b>FUEL/USDT · 5m chart</b>",
+                },
+              ],
+            ]),
+            onChartError,
+          },
+        ),
+      ).resolves.toEqual([
+        { episodeId: pump.index, chatId: "public-user", messageId: 900 },
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(onChartError).toHaveBeenCalledWith(
+      pump,
+      expect.objectContaining({ method: "sendPhoto", errorCode: 429 }),
+    );
   });
 
   it("sends every event individually even above the old detail limit", async () => {
