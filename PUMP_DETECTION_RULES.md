@@ -699,9 +699,13 @@ Additional rule for price stalling on volume:
 
 ```ts
 volumeRatio >= 5
-AND priceChangeLast3Candles <= 0.01
-AND close is below recent high
+AND priceChangeLast3Candles <= -0.01
+AND close is at least 1% below the recent high
 ```
+
+High-volume consolidation near the recent high is not a dump. When a
+`distribution_or_fade` phase immediately follows a pump within the episode gap, keep it in
+the preceding pump episode. Only standalone distribution/fade runs become dump episodes.
 
 ### 21.5 Spike
 

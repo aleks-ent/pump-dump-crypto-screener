@@ -137,10 +137,14 @@ export function groupEventsIntoEpisodes(
       prev.baseAsset === event.baseAsset &&
       prev.quoteAsset === event.quoteAsset &&
       prev.leadingExchange === event.leadingExchange;
+    const bucketFamily = phaseFamily(bucket[0]!.phase)!;
     const sameFamily = phaseFamily(prev.phase) === family;
+    // Distribution/fade is the closing phase of an immediately preceding pump,
+    // not a second standalone episode for the same market move.
+    const continuesPumpLifecycle = bucketFamily === "pump";
     const gap = event.timestamp - episodeEndMs(prev.timestamp);
 
-    if (sameCoin && sameFamily && gap <= maxGapMs) {
+    if (sameCoin && (sameFamily || continuesPumpLifecycle) && gap <= maxGapMs) {
       bucket.push(event);
     } else {
       flush();
