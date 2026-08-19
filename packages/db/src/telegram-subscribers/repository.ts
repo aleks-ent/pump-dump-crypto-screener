@@ -67,6 +67,15 @@ export class TelegramSubscriberRepository {
     return result.rows.map((row) => String(row.chat_id));
   }
 
+  async countActive(): Promise<number> {
+    const result = await this.client.execute(`
+      SELECT COUNT(*) AS count
+      FROM telegram_subscribers
+      WHERE subscribed = 1
+    `);
+    return Number(result.rows[0]?.count ?? 0);
+  }
+
   async isSubscribed(chatId: string): Promise<boolean> {
     const result = await this.client.execute({
       sql: `
