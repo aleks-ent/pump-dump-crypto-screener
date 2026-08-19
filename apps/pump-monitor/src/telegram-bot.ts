@@ -159,7 +159,7 @@ async function initializeTelegramSubscribers(
 ): Promise<void> {
   const legacyChatIds = loadLegacyTelegramSubscriberIds(baseDir);
   const subscribedAt = new Date().toISOString();
-  const { classifierAdded, migrated } =
+  const { classifierAdded, migrated, activeSubscriberCount } =
     await withTelegramSubscriberRepository(async (repo) => {
       const classifierAdded = await ensureClassifierTelegramRecipient(
         repo,
@@ -170,7 +170,8 @@ async function initializeTelegramSubscribers(
       for (const chatId of legacyChatIds) {
         if (await repo.subscribe(chatId, subscribedAt)) count += 1;
       }
-      return { classifierAdded, migrated: count };
+      const activeSubscriberCount = await repo.countActive();
+      return { classifierAdded, migrated: count, activeSubscriberCount };
     });
   if (legacyChatIds.length > 0) {
     markLegacyTelegramSubscribersMigrated(baseDir);
@@ -181,6 +182,7 @@ async function initializeTelegramSubscribers(
   if (migrated > 0) {
     log(`Migrated ${migrated} legacy Telegram subscriber(s) to the database`);
   }
+  log(`Active Telegram subscriber count: ${activeSubscriberCount}`);
 }
 
 function offsetPath(baseDir: string): string {
@@ -225,6 +227,28 @@ async function fetchUpdates(
 }
 
 const STATS_EPISODES_LIMIT = 5;
+export const TELEGRAM_START_RATE_LIMIT_MS = 60_000;
+
+export class TelegramStartRateLimiter {
+  private readonly acceptedAtByChatId = new Map<string, number>();
+
+  constructor(
+    private readonly windowMs = TELEGRAM_START_RATE_LIMIT_MS,
+    private readonly now: () => number = Date.now,
+  ) {}
+
+  tryAcquire(chatId: string): boolean {
+    const now = this.now();
+    for (const [storedChatId, acceptedAt] of this.acceptedAtByChatId) {
+      if (now - acceptedAt < this.windowMs) break;
+      this.acceptedAtByChatId.delete(storedChatId);
+    }
+
+    if (this.acceptedAtByChatId.has(chatId)) return false;
+    this.acceptedAtByChatId.set(chatId, now);
+    return true;
+  }
+}
 
 function telegramConfigForChat(
   config: PumpBotConfig,
@@ -251,6 +275,59 @@ async function fetchSubscriberDataForStart(
     );
     return null;
   }
+}
+
+export type TelegramStartCommandResult =
+  | "rate-limited"
+  | "subscribed"
+  | "already-subscribed";
+
+export async function handleStartCommand(
+  config: PumpBotConfig,
+  chatId: string,
+  log: (msg: string) => void,
+  rateLimiter: TelegramStartRateLimiter,
+  subscriberRepository?: TelegramSubscriberRepository,
+): Promise<TelegramStartCommandResult> {
+  if (!rateLimiter.tryAcquire(chatId)) {
+    log(`Ignored rate-limited /start for ${chatId}`);
+    return "rate-limited";
+  }
+
+  const subscribe = async (repo: TelegramSubscriberRepository) => {
+    if (await repo.isSubscribed(chatId)) {
+      return { added: false, activeSubscriberCount: null };
+    }
+
+    const subscribedAt = new Date().toISOString();
+    const subscriberData = await fetchSubscriberDataForStart(
+      config.telegram,
+      chatId,
+      subscribedAt,
+      log,
+    );
+    const added = await repo.subscribe(chatId, subscribedAt, subscriberData);
+    return {
+      added,
+      activeSubscriberCount: added ? await repo.countActive() : null,
+    };
+  };
+
+  const { added, activeSubscriberCount } = subscriberRepository
+    ? await subscribe(subscriberRepository)
+    : await withTelegramSubscriberRepository(subscribe);
+  await sendTelegramMessage(
+    telegramConfigForChat(config, chatId),
+    formatStartMessage(),
+    { replyMarkup: buildCommandReplyKeyboard() },
+  );
+  log(
+    `${added ? "Subscribed" : "Confirmed subscription for"} ${chatId} and sent command keyboard`,
+  );
+  if (activeSubscriberCount != null) {
+    log(`Active Telegram subscriber count: ${activeSubscriberCount}`);
+  }
+  return added ? "subscribed" : "already-subscribed";
 }
 
 export async function handleStatsCommand(
@@ -458,6 +535,7 @@ export async function runTelegramBot(
   const repoRoot = findRepoRoot();
   const baseDir = resolveRepoPath("data/market_stats", repoRoot);
   let offset = loadUpdateOffset(baseDir);
+  const startRateLimiter = new TelegramStartRateLimiter();
 
   log(
     `Public Telegram bot listening (/start, /stats, /runs, /about, /stop; event voting enabled for subscribers, admin chat ${config.telegram.classifierChatId})`,
@@ -489,24 +567,7 @@ export async function runTelegramBot(
       const replyConfig = telegramConfigForChat(config, chatId);
 
       if (command === "/start") {
-        const subscribedAt = new Date().toISOString();
-        const subscriberData = await fetchSubscriberDataForStart(
-          config.telegram,
-          chatId,
-          subscribedAt,
-          log,
-        );
-        const added = await withTelegramSubscriberRepository((repo) =>
-          repo.subscribe(chatId, subscribedAt, subscriberData),
-        );
-        await sendTelegramMessage(
-          replyConfig,
-          formatStartMessage(),
-          { replyMarkup: buildCommandReplyKeyboard() },
-        );
-        log(
-          `${added ? "Subscribed" : "Confirmed subscription for"} ${chatId} and sent command keyboard`,
-        );
+        await handleStartCommand(config, chatId, log, startRateLimiter);
       } else if (command === "/stats") {
         log(`Handling /stats for ${chatId}`);
         const count = await handleStatsCommand(config, chatId);
