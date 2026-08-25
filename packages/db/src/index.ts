@@ -12,7 +12,10 @@ export {
   MonitorRunRepository,
   type MonitorRunRecord,
 } from "./monitor-runs/repository.js";
-export { TelegramSubscriberRepository } from "./telegram-subscribers/repository.js";
+export {
+  TelegramSubscriberRepository,
+  type TelegramSubscriberHistoryPoint,
+} from "./telegram-subscribers/repository.js";
 export { PumpReviewRepository } from "./pump-review/repository.js";
 export {
   ANNOTATION_CONFIDENCES,

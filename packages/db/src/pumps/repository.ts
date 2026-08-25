@@ -297,6 +297,7 @@ export async function applySchema(client: Client, schemaPath?: string): Promise<
   // Legacy DBs have pumps without episode_type; indexes must run after this.
   await migratePumpsEpisodeType(client);
   await migrateTelegramSubscribersState(client);
+  await backfillTelegramSubscriberEvents(client);
   await migrateTelegramEpisodeMessageKind(client);
   if (createPumpAnnotations != null) {
     await updatePumpAnnotationCategoryConstraint(client, createPumpAnnotations);
@@ -382,6 +383,34 @@ async function migrateTelegramSubscribersState(client: Client): Promise<void> {
       "ALTER TABLE telegram_subscribers ADD COLUMN subscriber_data TEXT",
     );
   }
+}
+
+async function backfillTelegramSubscriberEvents(client: Client): Promise<void> {
+  await client.batch(
+    [
+      `
+        INSERT OR IGNORE INTO telegram_subscriber_events (
+          chat_id,
+          event_type,
+          occurred_at
+        )
+        SELECT chat_id, 'subscribe', subscribed_at
+        FROM telegram_subscribers
+      `.trim(),
+      `
+        INSERT OR IGNORE INTO telegram_subscriber_events (
+          chat_id,
+          event_type,
+          occurred_at
+        )
+        SELECT chat_id, 'unsubscribe', unsubscribed_at
+        FROM telegram_subscribers
+        WHERE subscribed = 0
+          AND unsubscribed_at IS NOT NULL
+      `.trim(),
+    ],
+    "write",
+  );
 }
 
 async function migrateTelegramEpisodeMessageKind(client: Client): Promise<void> {
