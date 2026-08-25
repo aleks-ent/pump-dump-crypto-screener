@@ -105,12 +105,6 @@ export async function loadPumpBotConfig(): Promise<PumpBotConfig | null> {
   };
 }
 
-async function createPumpRepository(): Promise<PumpRepository> {
-  const dbConfig = await loadDatabaseConfig();
-  const client = createDbClient(dbConfig);
-  return new PumpRepository(client);
-}
-
 async function createMonitorRunRepository(): Promise<MonitorRunRepository> {
   const dbConfig = await loadDatabaseConfig();
   const client = createDbClient(dbConfig);
@@ -253,18 +247,33 @@ async function fetchSubscriberDataForStart(
 export async function handleStatsCommand(
   config: PumpBotConfig,
   chatId: string,
+  repositories?: Pick<TelegramBotRepositories, "pumpRepo" | "subscriberRepo">,
 ): Promise<number> {
-  const repo = await createPumpRepository();
-  const pumps = await repo.listStoredPumps({
-    minScore: config.pump.minScore,
-    limit: STATS_EPISODES_LIMIT,
-    episodeType: "pump",
-  });
-  const messages = formatPumpStatsMessages(
-    pumps,
-    config.pump.minScore,
-    STATS_EPISODES_LIMIT,
-  );
+  const loadMessages = async ({
+    pumpRepo,
+    subscriberRepo,
+  }: Pick<
+    TelegramBotRepositories,
+    "pumpRepo" | "subscriberRepo"
+  >): Promise<string[]> => {
+    const [pumps, activeSubscriberCount] = await Promise.all([
+      pumpRepo.listStoredPumps({
+        minScore: config.pump.minScore,
+        limit: STATS_EPISODES_LIMIT,
+        episodeType: "pump",
+      }),
+      subscriberRepo.countActive(),
+    ]);
+    return formatPumpStatsMessages(
+      pumps,
+      config.pump.minScore,
+      STATS_EPISODES_LIMIT,
+      activeSubscriberCount,
+    );
+  };
+  const messages = repositories
+    ? await loadMessages(repositories)
+    : await withTelegramBotRepositories(loadMessages);
 
   for (const message of messages) {
     await sendTelegramMessage(telegramConfigForChat(config, chatId), message);

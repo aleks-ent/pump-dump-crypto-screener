@@ -1,6 +1,11 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import type { PumpEpisode } from "@screener/pump-detector";
-import { createMemoryDbClient, PumpRepository } from "@screener/db";
+import {
+  createMemoryDbClient,
+  PumpRepository,
+  TelegramSubscriberRepository,
+} from "@screener/db";
+import { handleStatsCommand } from "./telegram-bot.js";
 import {
   buildCommandReplyKeyboard,
   formatAboutMessage,
@@ -213,9 +218,49 @@ describe("formatPumpStatsMessages", () => {
       samplePump("NEW/USDT", Date.parse("2026-06-06T10:00:00.000Z"), 85),
     ]);
     const pumps = await repo.listStoredPumps({ minScore: 80, limit: 5 });
-    const message = formatPumpStatsMessages(pumps, 80)[0] ?? "";
+    const message = formatPumpStatsMessages(pumps, 80, 5, 12)[0] ?? "";
     expect(message).toContain("<b>Pumps</b> · score &gt; 80 · last 5");
+    expect(message).toContain("Active subscribers: 12");
     expect(message.indexOf("NEW/USDT")).toBeLessThan(message.indexOf("OLD/USDT"));
+  });
+
+  it("includes the active subscriber count", () => {
+    expect(formatPumpStatsMessages([], 80, 5, 12)).toEqual([
+      "No pumps with score &gt; 80 stored yet.\nActive subscribers: 12",
+    ]);
+  });
+});
+
+describe("handleStatsCommand", () => {
+  it("counts only active subscribers in the Telegram response", async () => {
+    const client = createMemoryDbClient();
+    const pumpRepo = new PumpRepository(client);
+    await pumpRepo.applySchema();
+    const subscriberRepo = new TelegramSubscriberRepository(client);
+    await subscriberRepo.subscribe("111", "2026-06-11T10:00:00.000Z");
+    await subscriberRepo.subscribe("222", "2026-06-11T10:01:00.000Z");
+    await subscriberRepo.unsubscribe("222", "2026-06-11T11:00:00.000Z");
+    const fetchMock = mockTelegramSuccess();
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await expect(
+        handleStatsCommand(
+          {
+            telegram: { botToken: "token", classifierChatId: "999" },
+            pump: { minScore: 80, minDumpScore: 55 },
+          },
+          "111",
+          { pumpRepo, subscriberRepo },
+        ),
+      ).resolves.toBe(1);
+
+      const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+      const body = JSON.parse(String(request.body)) as { text: string };
+      expect(body.text).toContain("Active subscribers: 1");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
