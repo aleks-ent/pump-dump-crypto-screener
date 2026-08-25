@@ -329,12 +329,22 @@ export function formatPumpStatsMessages(
   pumps: StoredPump[],
   minScore: number,
   limit = 5,
+  activeSubscriberCount?: number,
 ): string[] {
+  const withSubscriberCount = (message: string): string =>
+    activeSubscriberCount == null
+      ? message
+      : `${message}\nActive subscribers: ${activeSubscriberCount}`;
   return formatEpisodeStatsSection(
     pumps,
-    formatPumpStatsHeader,
-    (min, lim) => formatPumpStatsHeader(min, lim, { index: 999, total: 999 }),
-    (min) => `No pumps with score &gt; ${min} stored yet.`,
+    (min, lim, part) =>
+      withSubscriberCount(formatPumpStatsHeader(min, lim, part)),
+    (min, lim) =>
+      withSubscriberCount(
+        formatPumpStatsHeader(min, lim, { index: 999, total: 999 }),
+      ),
+    (min) =>
+      withSubscriberCount(`No pumps with score &gt; ${min} stored yet.`),
     minScore,
     limit,
   );
