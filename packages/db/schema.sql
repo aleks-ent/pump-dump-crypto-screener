@@ -73,6 +73,18 @@ CREATE TABLE IF NOT EXISTS telegram_subscribers (
   subscriber_data TEXT
 );
 
+CREATE TABLE IF NOT EXISTS telegram_subscriber_events (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  chat_id     TEXT NOT NULL,
+  event_type  TEXT NOT NULL CHECK (event_type IN ('subscribe', 'unsubscribe')),
+  occurred_at TEXT NOT NULL,
+  UNIQUE (chat_id, event_type, occurred_at),
+  FOREIGN KEY (chat_id) REFERENCES telegram_subscribers(chat_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_subscriber_events_occurred_at
+  ON telegram_subscriber_events(occurred_at ASC, id ASC);
+
 CREATE TABLE IF NOT EXISTS telegram_episode_votes (
   episode_id     TEXT NOT NULL,
   chat_id        TEXT NOT NULL,

@@ -116,6 +116,19 @@ describe("TelegramSubscriberRepository", () => {
     });
   });
 
+  it("builds an aggregate history across subscription lifecycle changes", async () => {
+    await repo.subscribe("111", "2026-06-11T10:00:00.000Z");
+    await repo.subscribe("222", "2026-06-11T10:00:00.000Z");
+    await repo.unsubscribe("111", "2026-06-11T11:00:00.000Z");
+    await repo.subscribe("111", "2026-06-11T12:00:00.000Z");
+
+    expect(await repo.listHistory()).toEqual([
+      { occurredAt: "2026-06-11T10:00:00.000Z", count: 2 },
+      { occurredAt: "2026-06-11T11:00:00.000Z", count: 1 },
+      { occurredAt: "2026-06-11T12:00:00.000Z", count: 2 },
+    ]);
+  });
+
   it("refreshes subscriber data without resetting an active subscription time", async () => {
     await repo.subscribe(
       "12345",
@@ -144,6 +157,9 @@ describe("TelegramSubscriberRepository", () => {
       subscribed_at: "2026-06-11T10:00:00.000Z",
       subscriber_data: subscriberData,
     });
+    expect(await repo.listHistory()).toEqual([
+      { occurredAt: "2026-06-11T10:00:00.000Z", count: 1 },
+    ]);
   });
 
   it("migrates legacy subscriber rows as active", async () => {
@@ -166,9 +182,13 @@ describe("TelegramSubscriberRepository", () => {
     const legacyRepo = new TelegramSubscriberRepository(client);
 
     expect(await legacyRepo.listChatIds()).toEqual(["12345"]);
+    expect(await legacyRepo.listHistory()).toEqual([
+      { occurredAt: "2026-06-11T10:00:00.000Z", count: 1 },
+    ]);
     expect(
       await legacyRepo.unsubscribe("12345", "2026-06-11T11:00:00.000Z"),
     ).toBe(true);
+    await applySchema(client);
 
     const result = await client.execute({
       sql: `
@@ -183,5 +203,59 @@ describe("TelegramSubscriberRepository", () => {
       unsubscribed_at: "2026-06-11T11:00:00.000Z",
       subscriber_data: null,
     });
+    expect(await legacyRepo.listHistory()).toEqual([
+      { occurredAt: "2026-06-11T10:00:00.000Z", count: 1 },
+      { occurredAt: "2026-06-11T11:00:00.000Z", count: 0 },
+    ]);
+  });
+
+  it("backfills current subscriber state into history idempotently", async () => {
+    const client = createMemoryDbClient();
+    await client.execute(`
+      CREATE TABLE telegram_subscribers (
+        chat_id         TEXT PRIMARY KEY NOT NULL,
+        subscribed_at   TEXT NOT NULL,
+        subscribed      INTEGER NOT NULL DEFAULT 1,
+        unsubscribed_at TEXT,
+        subscriber_data TEXT
+      )
+    `);
+    await client.batch(
+      [
+        {
+          sql: `
+            INSERT INTO telegram_subscribers (
+              chat_id, subscribed_at, subscribed, unsubscribed_at
+            )
+            VALUES (?, ?, 1, NULL)
+          `,
+          args: ["active", "2026-06-11T10:00:00.000Z"],
+        },
+        {
+          sql: `
+            INSERT INTO telegram_subscribers (
+              chat_id, subscribed_at, subscribed, unsubscribed_at
+            )
+            VALUES (?, ?, 0, ?)
+          `,
+          args: [
+            "inactive",
+            "2026-06-11T10:30:00.000Z",
+            "2026-06-11T11:00:00.000Z",
+          ],
+        },
+      ],
+      "write",
+    );
+
+    await applySchema(client);
+    await applySchema(client);
+
+    const migratedRepo = new TelegramSubscriberRepository(client);
+    expect(await migratedRepo.listHistory()).toEqual([
+      { occurredAt: "2026-06-11T10:00:00.000Z", count: 1 },
+      { occurredAt: "2026-06-11T10:30:00.000Z", count: 2 },
+      { occurredAt: "2026-06-11T11:00:00.000Z", count: 1 },
+    ]);
   });
 });

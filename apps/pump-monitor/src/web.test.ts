@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { StoredPump } from "@screener/db";
-import { renderPumpsPage } from "./web.js";
+import type { StoredPump, TelegramSubscriberHistoryPoint } from "@screener/db";
+import { renderIndexPage } from "./index-page.js";
 
 function sampleStoredPump(overrides: Partial<StoredPump> = {}): StoredPump {
   return {
@@ -28,9 +28,18 @@ function sampleStoredPump(overrides: Partial<StoredPump> = {}): StoredPump {
   };
 }
 
-describe("renderPumpsPage", () => {
+function renderPage(
+  pumps: StoredPump[],
+  generatedAt: Date = new Date(),
+  disk: Parameters<typeof renderIndexPage>[0]["disk"] = null,
+  subscriberHistory: TelegramSubscriberHistoryPoint[] = [],
+): string {
+  return renderIndexPage({ pumps, generatedAt, disk, subscriberHistory });
+}
+
+describe("renderIndexPage", () => {
   it("renders the latest pumps table", () => {
-    const html = renderPumpsPage(
+    const html = renderPage(
       [sampleStoredPump()],
       new Date("2026-06-07T01:00:00.000Z"),
     );
@@ -46,7 +55,7 @@ describe("renderPumpsPage", () => {
 
   describe("when disk space is available", () => {
     it("renders free space, total, and used percent", () => {
-      const html = renderPumpsPage([sampleStoredPump()], new Date(), {
+      const html = renderPage([sampleStoredPump()], new Date(), {
         freeBytes: 412 * 1024 ** 3,
         totalBytes: 1024 ** 4,
         usedPercent: 59,
@@ -57,7 +66,7 @@ describe("renderPumpsPage", () => {
     });
 
     it("renders the usage bar at the used percent", () => {
-      const html = renderPumpsPage([sampleStoredPump()], new Date(), {
+      const html = renderPage([sampleStoredPump()], new Date(), {
         freeBytes: 412 * 1024 ** 3,
         totalBytes: 1024 ** 4,
         usedPercent: 59,
@@ -69,7 +78,7 @@ describe("renderPumpsPage", () => {
 
   describe("when free space is under fifteen percent", () => {
     it("renders the usage bar in amber", () => {
-      const html = renderPumpsPage([sampleStoredPump()], new Date(), {
+      const html = renderPage([sampleStoredPump()], new Date(), {
         freeBytes: 100 * 1024 ** 3,
         totalBytes: 1024 ** 4,
         usedPercent: 90,
@@ -82,7 +91,7 @@ describe("renderPumpsPage", () => {
 
   describe("when free space is under five percent", () => {
     it("renders the usage bar in red", () => {
-      const html = renderPumpsPage([sampleStoredPump()], new Date(), {
+      const html = renderPage([sampleStoredPump()], new Date(), {
         freeBytes: 20 * 1024 ** 3,
         totalBytes: 1024 ** 4,
         usedPercent: 98,
@@ -95,7 +104,7 @@ describe("renderPumpsPage", () => {
 
   describe("when disk space could not be read", () => {
     it("renders an unavailable notice without a usage bar", () => {
-      const html = renderPumpsPage([sampleStoredPump()], new Date(), null);
+      const html = renderPage([sampleStoredPump()], new Date(), null);
 
       expect(html).toContain("Disk usage unavailable");
       expect(html).not.toContain("free of");
@@ -104,7 +113,7 @@ describe("renderPumpsPage", () => {
   });
 
   it("escapes text and suppresses unsafe chart links", () => {
-    const html = renderPumpsPage([
+    const html = renderPage([
       sampleStoredPump({
         coin: "<BAD/USDT>",
         tradingViewUrl: "javascript:alert(1)",
@@ -115,5 +124,48 @@ describe("renderPumpsPage", () => {
     expect(html).not.toContain("<BAD/USDT>");
     expect(html).not.toContain("javascript:alert");
     expect(html).toContain("Unavailable");
+  });
+
+  it("renders accessible same-page tabs with pumps selected by default", () => {
+    const html = renderPage([sampleStoredPump()]);
+
+    expect(html).toContain('role="tablist"');
+    expect(html).toContain(
+      'id="tab-pumps" type="button" role="tab" aria-controls="panel-pumps" aria-selected="true"',
+    );
+    expect(html).toContain(
+      'id="tab-subscribers" type="button" role="tab" aria-controls="panel-subscribers" aria-selected="false"',
+    );
+    expect(html).toContain(
+      'id="panel-subscribers" role="tabpanel" aria-labelledby="tab-subscribers" tabindex="0" hidden',
+    );
+    expect(html).not.toContain('href="/subscribers"');
+  });
+
+  it("renders the current subscriber count and historical chart points", () => {
+    const html = renderPage(
+      [sampleStoredPump()],
+      new Date("2026-06-07T01:00:00.000Z"),
+      null,
+      [
+        { occurredAt: "2026-06-01T10:00:00.000Z", count: 1 },
+        { occurredAt: "2026-06-03T10:00:00.000Z", count: 3 },
+        { occurredAt: "2026-06-05T10:00:00.000Z", count: 2 },
+      ],
+    );
+
+    expect(html).toContain('data-active-subscriber-count="2"');
+    expect(html).toContain("Telegram bot subscriber count over time");
+    expect(html).toContain('data-occurred-at="2026-06-01T10:00:00.000Z" data-count="1"');
+    expect(html).toContain('data-occurred-at="2026-06-05T10:00:00.000Z" data-count="2"');
+    expect(html).toContain("Tracking since Jun 01, 2026 UTC");
+  });
+
+  it("renders a subscriber empty state when no history exists", () => {
+    const html = renderPage([sampleStoredPump()]);
+
+    expect(html).toContain('data-active-subscriber-count="0"');
+    expect(html).toContain("No subscriber history yet");
+    expect(html).toContain("The chart will appear after the bot records its first subscriber.");
   });
 });

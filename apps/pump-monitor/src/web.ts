@@ -7,16 +7,12 @@ import {
   loadDatabaseConfig,
   PumpRepository,
   PumpReviewRepository,
+  TelegramSubscriberRepository,
   type PumpReviewEvent,
-  type StoredPump,
 } from "@screener/db";
 import { resolveRepoPath } from "@screener/core";
-import {
-  formatBytes,
-  pickProbePath,
-  readDiskSpace,
-  type DiskSpace,
-} from "./disk-space.js";
+import { pickProbePath, readDiskSpace } from "./disk-space.js";
+import { renderIndexPage } from "./index-page.js";
 import { handleReviewApiRequest, parsePumpEventFilters } from "./review-api.js";
 import { handleReviewCandleApiRequest } from "./review-candle-api.js";
 import { handleReviewExportRequest } from "./review-export.js";
@@ -57,14 +53,6 @@ interface ConfigFile {
   };
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 function parsePort(value: unknown): number | null {
   const port =
     typeof value === "number"
@@ -94,39 +82,6 @@ async function loadWebConfig(opts: WebCliOptions): Promise<WebConfig> {
     cfg.web?.host?.trim() ||
     DEFAULT_WEB_HOST;
   return { port, host, reviewAuth: cfg.web?.reviewAuth };
-}
-
-function fmtUtc(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 16).replace("T", " ");
-}
-
-function fmtDuration(minutes: number): string {
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest > 0 ? `${hours}h ${rest}m` : `${hours}h`;
-}
-
-function safeHttpUrl(value: string): string | null {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
-  } catch {
-    return null;
-  }
-}
-
-function classificationText(pump: StoredPump): string {
-  switch (pump.classification) {
-    case "pump":
-      return "Pump";
-    case "dump":
-      return "Dump";
-    case "none":
-      return "None";
-    default:
-      return "Unclassified";
-  }
 }
 
 function reviewSummary({
@@ -199,104 +154,6 @@ async function renderReviewWorkspace(
   }
 }
 
-function renderPumpRow(pump: StoredPump): string {
-  const chartUrl = safeHttpUrl(pump.tradingViewUrl);
-  const exchanges =
-    pump.confirmedExchanges.length > 0
-      ? pump.confirmedExchanges.join(", ")
-      : pump.leadingExchange;
-  return `
-        <tr class="border-b border-zinc-100 last:border-0">
-          <td class="whitespace-nowrap px-4 py-3 font-medium text-zinc-950">${escapeHtml(pump.coin)}</td>
-          <td class="whitespace-nowrap px-4 py-3 text-zinc-700">${fmtUtc(pump.startMs)} UTC</td>
-          <td class="whitespace-nowrap px-4 py-3">
-            <span class="inline-flex min-w-12 justify-center rounded-md bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800">${pump.peakScore}</span>
-          </td>
-          <td class="whitespace-nowrap px-4 py-3 text-zinc-700">${fmtDuration(pump.durationMinutes)}</td>
-          <td class="whitespace-nowrap px-4 py-3 text-zinc-700">${escapeHtml(exchanges)}</td>
-          <td class="whitespace-nowrap px-4 py-3 text-zinc-700">${escapeHtml(classificationText(pump))}</td>
-          <td class="whitespace-nowrap px-4 py-3">${
-            chartUrl
-              ? `<a class="font-medium text-emerald-700 hover:text-emerald-900" href="${escapeHtml(chartUrl)}">TradingView</a>`
-              : `<span class="text-zinc-400">Unavailable</span>`
-          }</td>
-        </tr>`;
-}
-
-function renderDiskSpace(disk: DiskSpace | null): string {
-  if (!disk) {
-    return `<p class="mt-1 text-sm text-zinc-500">Disk usage unavailable</p>`;
-  }
-
-  const freePercent = disk.totalBytes > 0 ? (disk.freeBytes / disk.totalBytes) * 100 : 0;
-  const barColor =
-    freePercent < 5 ? "bg-red-500" : freePercent < 15 ? "bg-amber-500" : "bg-emerald-500";
-  const textColor =
-    freePercent < 5 ? "text-red-700" : freePercent < 15 ? "text-amber-700" : "text-zinc-600";
-
-  return `<div class="mt-1 flex items-center gap-3">
-          <p class="text-sm ${textColor}">${formatBytes(disk.freeBytes)} free of ${formatBytes(disk.totalBytes)} (${disk.usedPercent}% used)</p>
-          <div class="h-1.5 w-32 overflow-hidden rounded-full bg-zinc-200"><div class="h-full ${barColor}" style="width:${disk.usedPercent}%"></div></div>
-        </div>`;
-}
-
-export function renderPumpsPage(
-  pumps: StoredPump[],
-  generatedAt: Date = new Date(),
-  disk: DiskSpace | null = null,
-): string {
-  const rows =
-    pumps.length > 0
-      ? pumps.map((pump) => renderPumpRow(pump)).join("\n")
-      : `
-        <tr>
-          <td colspan="7" class="px-4 py-8 text-center text-sm text-zinc-500">No pumps stored yet.</td>
-        </tr>`;
-
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Last 10 Pumps</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-zinc-50 text-zinc-950">
-  <main class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-    <header class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <h1 class="text-2xl font-semibold">Last 10 Pumps</h1>
-        <p class="mt-1 text-sm text-zinc-600">Updated ${fmtUtc(generatedAt.getTime())} UTC</p>
-        ${renderDiskSpace(disk)}
-      </div>
-      <a class="inline-flex h-9 w-fit items-center rounded-md border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 hover:bg-zinc-100" href="/">Refresh</a>
-    </header>
-
-    <section class="overflow-hidden rounded-md border border-zinc-200 bg-white shadow-sm">
-      <div class="overflow-x-auto">
-        <table class="min-w-full text-left text-sm">
-          <thead class="border-b border-zinc-200 bg-zinc-100 text-xs uppercase text-zinc-600">
-            <tr>
-              <th class="px-4 py-3 font-semibold">Coin</th>
-              <th class="px-4 py-3 font-semibold">Start</th>
-              <th class="px-4 py-3 font-semibold">Score</th>
-              <th class="px-4 py-3 font-semibold">Duration</th>
-              <th class="px-4 py-3 font-semibold">Exchange</th>
-              <th class="px-4 py-3 font-semibold">Classification</th>
-              <th class="px-4 py-3 font-semibold">Chart</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-zinc-100">
-${rows}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  </main>
-</body>
-</html>`;
-}
-
 function send(
   res: ServerResponse,
   status: number,
@@ -316,6 +173,7 @@ async function handleRequest(
   res: ServerResponse,
   repo: PumpRepository,
   reviewRepo: PumpReviewRepository,
+  subscriberRepo: TelegramSubscriberRepository,
   reviewAuth: ReviewAuthConfig,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -359,16 +217,17 @@ async function handleRequest(
     return;
   }
 
-  const [pumps, disk] = await Promise.all([
+  const [pumps, disk, subscriberHistory] = await Promise.all([
     repo.listStoredPumps({ episodeType: "pump", limit: PUMP_LIMIT }),
     readDiskSpace(
       pickProbePath([resolveRepoPath(MARKET_DATA_DIR), resolveRepoPath(".")]),
     ),
+    subscriberRepo.listHistory(),
   ]);
   send(
     res,
     200,
-    renderPumpsPage(pumps, new Date(), disk),
+    renderIndexPage({ pumps, subscriberHistory, generatedAt: new Date(), disk }),
     "text/html; charset=utf-8",
     headOnly,
   );
@@ -382,20 +241,23 @@ export async function createPumpWebServer(
   const client = createDbClient(dbConfig);
   const repo = new PumpRepository(client);
   const reviewRepo = new PumpReviewRepository(client);
+  const subscriberRepo = new TelegramSubscriberRepository(client);
   const reviewAuth = resolveReviewAuthConfig(config.reviewAuth);
   assertSafeReviewExposure(config.host, reviewAuth);
   await repo.applySchema();
 
   const server = createServer((req, res) => {
-    void handleRequest(req, res, repo, reviewRepo, reviewAuth).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      log(`Web request failed: ${message}`);
-      if (!res.headersSent) {
-        send(res, 500, "Internal server error\n", "text/plain; charset=utf-8");
-      } else {
-        res.end();
-      }
-    });
+    void handleRequest(req, res, repo, reviewRepo, subscriberRepo, reviewAuth).catch(
+      (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        log(`Web request failed: ${message}`);
+        if (!res.headersSent) {
+          send(res, 500, "Internal server error\n", "text/plain; charset=utf-8");
+        } else {
+          res.end();
+        }
+      },
+    );
   });
   server.on("close", () => client.close());
 
@@ -420,7 +282,7 @@ async function main(): Promise<void> {
   const program = new Command();
   program
     .name("pump-web")
-    .description("Serve a basic HTTP page with the last 10 stored pump episodes")
+    .description("Serve the pump and Telegram subscriber dashboard")
     .option("--port <port>", "HTTP port (default: 3000)")
     .option("--host <host>", "HTTP bind host (default: 127.0.0.1)");
 
