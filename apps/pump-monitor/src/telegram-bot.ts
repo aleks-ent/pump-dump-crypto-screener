@@ -36,6 +36,7 @@ import {
   buildCommandReplyKeyboard,
   fetchTelegramSubscriberData,
   normalizeTelegramChatId,
+  normalizePublicTelegramChatId,
   sendTelegramMessage,
   type TelegramConfig,
   type TelegramRuntimeConfig,
@@ -87,6 +88,7 @@ export async function loadPumpBotConfig(): Promise<PumpBotConfig | null> {
   const cfg = (mod.default ?? mod) as {
     telegramBotToken?: string;
     classifierTelegramChatId?: string | number;
+    publicTelegramChatId?: string | number;
     pump?: {
       minScore?: number;
       minDumpScore?: number;
@@ -98,12 +100,16 @@ export async function loadPumpBotConfig(): Promise<PumpBotConfig | null> {
     cfg.classifierTelegramChatId,
   );
   if (!botToken || !classifierChatId) return null;
+  const publicChatId = normalizePublicTelegramChatId(
+    cfg.publicTelegramChatId,
+    classifierChatId,
+  );
 
   const pumpCfg = cfg.pump ?? {};
   const minScore = Number(pumpCfg.minScore ?? pumpCfg.statsMinScore ?? 80);
   const minDumpScore = Number(pumpCfg.minDumpScore ?? 55);
   return {
-    telegram: { botToken, classifierChatId },
+    telegram: { botToken, classifierChatId, publicChatId },
     pump: { minScore, minDumpScore },
   };
 }
@@ -403,6 +409,16 @@ export async function handleClassificationCallback(
   }
 
   const chatId = String(rawChatId);
+  if (chatId === config.telegram.publicChatId) {
+    log(`Ignored vote callback from read-only public chat ${chatId}`);
+    await answerCallbackQuery(
+      config.telegram,
+      callbackQuery.id,
+      "Voting is not available in this chat",
+    );
+    return;
+  }
+
   const handleVote = async ({
     pumpRepo,
     subscriberRepo,
@@ -444,7 +460,7 @@ export async function handleClassificationCallback(
 
     const voteCounts = await votingRepo.countVotes(parsed.pumpId);
     const text = formatVotedEpisodeAlertMessage(episode, voteCounts);
-    const replyMarkup = buildClassificationKeyboard(parsed.pumpId);
+    const votingReplyMarkup = buildClassificationKeyboard(parsed.pumpId);
     const currentMessageKind: TelegramMessageKind = callbackQuery.message?.photo?.length
       ? "photo"
       : "text";
@@ -482,7 +498,12 @@ export async function handleClassificationCallback(
           message.chatId,
           message.messageId,
           text,
-          { replyMarkup },
+          {
+            replyMarkup:
+              message.chatId === config.telegram.publicChatId
+                ? { inline_keyboard: [] }
+                : votingReplyMarkup,
+          },
         );
       } catch (error) {
         if (isTelegramMessageNotModified(error)) continue;

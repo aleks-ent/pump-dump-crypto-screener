@@ -9,6 +9,7 @@ interface TelegramSubscriberEnsurer {
     chatId: string,
     subscribedAt: string,
     subscriberData?: string | null,
+    votingEnabled?: boolean,
   ): Promise<boolean>;
 }
 
@@ -24,6 +25,14 @@ export async function ensureClassifierTelegramRecipient(
   subscribedAt: string = new Date().toISOString(),
 ): Promise<boolean> {
   return repo.subscribe(classifierChatId, subscribedAt);
+}
+
+export async function ensureReadOnlyTelegramRecipient(
+  repo: TelegramSubscriberEnsurer,
+  chatId: string,
+  subscribedAt: string = new Date().toISOString(),
+): Promise<boolean> {
+  return repo.subscribe(chatId, subscribedAt, null, false);
 }
 
 export async function cleanupUnavailableTelegramRecipient(

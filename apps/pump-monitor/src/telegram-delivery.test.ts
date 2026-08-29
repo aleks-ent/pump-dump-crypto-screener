@@ -3,6 +3,7 @@ import { TelegramApiError } from "./telegram.js";
 import {
   cleanupUnavailableTelegramRecipient,
   ensureClassifierTelegramRecipient,
+  ensureReadOnlyTelegramRecipient,
 } from "./telegram-delivery.js";
 
 describe("Telegram recipient cleanup", () => {
@@ -18,6 +19,23 @@ describe("Telegram recipient cleanup", () => {
     expect(subscribe).toHaveBeenCalledWith(
       "36772199",
       "2026-06-11T10:00:00.000Z",
+    );
+  });
+
+  it("persists the public destination without voting capability", async () => {
+    const subscribe = vi.fn().mockResolvedValue(true);
+    expect(
+      await ensureReadOnlyTelegramRecipient(
+        { subscribe },
+        "-10098765",
+        "2026-06-11T10:00:00.000Z",
+      ),
+    ).toBe(true);
+    expect(subscribe).toHaveBeenCalledWith(
+      "-10098765",
+      "2026-06-11T10:00:00.000Z",
+      null,
+      false,
     );
   });
 

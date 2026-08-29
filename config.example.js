@@ -5,6 +5,8 @@ export default {
   telegramBotToken: "",
   // Private chat that is always subscribed and syncs its vote to the legacy classification field.
   classifierTelegramChatId: "",
+  // Optional read-only group/channel that always receives alerts without voting buttons.
+  publicTelegramChatId: "",
   fetch: {
     intervals: ["1m", "5m"],
   },

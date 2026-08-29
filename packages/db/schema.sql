@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS telegram_subscribers (
   chat_id         TEXT PRIMARY KEY NOT NULL,
   subscribed_at   TEXT NOT NULL,
   subscribed      INTEGER NOT NULL DEFAULT 1 CHECK (subscribed IN (0, 1)),
+  voting_enabled  INTEGER NOT NULL DEFAULT 1 CHECK (voting_enabled IN (0, 1)),
   unsubscribed_at TEXT,
   subscriber_data TEXT
 );

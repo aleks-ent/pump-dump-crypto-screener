@@ -12,6 +12,7 @@ export class TelegramSubscriberRepository {
     chatId: string,
     subscribedAt: string,
     subscriberData: string | null = null,
+    votingEnabled = true,
   ): Promise<boolean> {
     const results = await this.client.batch(
       [
@@ -21,28 +22,43 @@ export class TelegramSubscriberRepository {
               chat_id,
               subscribed_at,
               subscribed,
+              voting_enabled,
               unsubscribed_at,
               subscriber_data
             )
-            VALUES (?, ?, 1, NULL, ?)
+            VALUES (?, ?, 1, ?, NULL, ?)
             ON CONFLICT(chat_id) DO UPDATE SET
               subscribed_at = CASE
-                WHEN telegram_subscribers.subscribed = 0 THEN excluded.subscribed_at
+                WHEN excluded.voting_enabled = 1
+                  AND (
+                    telegram_subscribers.subscribed = 0
+                    OR telegram_subscribers.voting_enabled = 0
+                  )
+                  THEN excluded.subscribed_at
                 ELSE telegram_subscribers.subscribed_at
               END,
               subscribed = 1,
-              unsubscribed_at = NULL,
+              voting_enabled = excluded.voting_enabled,
+              unsubscribed_at = CASE
+                WHEN telegram_subscribers.subscribed = 1
+                  AND telegram_subscribers.voting_enabled = 1
+                  AND excluded.voting_enabled = 0
+                  THEN excluded.subscribed_at
+                WHEN excluded.voting_enabled = 1 THEN NULL
+                ELSE telegram_subscribers.unsubscribed_at
+              END,
               subscriber_data = COALESCE(
                 excluded.subscriber_data,
                 telegram_subscribers.subscriber_data
               )
             WHERE telegram_subscribers.subscribed = 0
+              OR telegram_subscribers.voting_enabled IS NOT excluded.voting_enabled
               OR (
                 excluded.subscriber_data IS NOT NULL
                 AND telegram_subscribers.subscriber_data IS NOT excluded.subscriber_data
               )
           `.trim(),
-          args: [chatId, subscribedAt, subscriberData],
+          args: [chatId, subscribedAt, votingEnabled ? 1 : 0, subscriberData],
         },
         {
           sql: `
@@ -55,7 +71,24 @@ export class TelegramSubscriberRepository {
             FROM telegram_subscribers
             WHERE chat_id = ?
               AND subscribed = 1
+              AND voting_enabled = 1
               AND subscribed_at = ?
+          `.trim(),
+          args: [subscribedAt, chatId, subscribedAt],
+        },
+        {
+          sql: `
+            INSERT OR IGNORE INTO telegram_subscriber_events (
+              chat_id,
+              event_type,
+              occurred_at
+            )
+            SELECT chat_id, 'unsubscribe', ?
+            FROM telegram_subscribers
+            WHERE chat_id = ?
+              AND subscribed = 1
+              AND voting_enabled = 0
+              AND unsubscribed_at = ?
           `.trim(),
           args: [subscribedAt, chatId, subscribedAt],
         },
@@ -92,6 +125,7 @@ export class TelegramSubscriberRepository {
             FROM telegram_subscribers
             WHERE chat_id = ?
               AND subscribed = 0
+              AND voting_enabled = 1
               AND unsubscribed_at = ?
           `.trim(),
           args: [unsubscribedAt, chatId, unsubscribedAt],
@@ -107,6 +141,7 @@ export class TelegramSubscriberRepository {
       SELECT chat_id
       FROM telegram_subscribers
       WHERE subscribed = 1
+        AND voting_enabled = 1
       ORDER BY subscribed_at ASC, chat_id ASC
     `);
     return result.rows.map((row) => String(row.chat_id));
@@ -117,6 +152,7 @@ export class TelegramSubscriberRepository {
       SELECT COUNT(*) AS count
       FROM telegram_subscribers
       WHERE subscribed = 1
+        AND voting_enabled = 1
     `);
     return Number(result.rows[0]?.count ?? 0);
   }
@@ -148,6 +184,7 @@ export class TelegramSubscriberRepository {
         FROM telegram_subscribers
         WHERE chat_id = ?
           AND subscribed = 1
+          AND voting_enabled = 1
         LIMIT 1
       `.trim(),
       args: [chatId],

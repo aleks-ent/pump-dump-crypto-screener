@@ -52,6 +52,63 @@ describe("TelegramSubscriberRepository", () => {
     expect(result.rows[0]?.subscriber_data).toBe(subscriberData);
   });
 
+  it("keeps a read-only delivery recipient out of the voting subscriber list", async () => {
+    expect(
+      await repo.subscribe(
+        "-10098765",
+        "2026-06-11T10:00:00.000Z",
+        null,
+        false,
+      ),
+    ).toBe(true);
+
+    expect(await repo.listChatIds()).toEqual([]);
+    expect(await repo.countActive()).toBe(0);
+    expect(await repo.isSubscribed("-10098765")).toBe(false);
+    expect(await repo.listHistory()).toEqual([]);
+
+    await applySchema(client);
+    expect(await repo.listHistory()).toEqual([]);
+
+    const result = await client.execute({
+      sql: `
+        SELECT subscribed, voting_enabled
+        FROM telegram_subscribers
+        WHERE chat_id = ?
+      `,
+      args: ["-10098765"],
+    });
+    expect(result.rows[0]).toMatchObject({
+      subscribed: 1,
+      voting_enabled: 0,
+    });
+  });
+
+  it("tracks voting capability changes without counting a read-only feed", async () => {
+    await repo.subscribe("-10098765", "2026-06-11T10:00:00.000Z");
+    await repo.subscribe(
+      "-10098765",
+      "2026-06-11T11:00:00.000Z",
+      null,
+      false,
+    );
+    expect(
+      await repo.subscribe(
+        "-10098765",
+        "2026-06-11T12:00:00.000Z",
+        null,
+        false,
+      ),
+    ).toBe(false);
+    await repo.subscribe("-10098765", "2026-06-11T13:00:00.000Z");
+
+    expect(await repo.listHistory()).toEqual([
+      { occurredAt: "2026-06-11T10:00:00.000Z", count: 1 },
+      { occurredAt: "2026-06-11T11:00:00.000Z", count: 0 },
+      { occurredAt: "2026-06-11T13:00:00.000Z", count: 1 },
+    ]);
+  });
+
   it("marks an existing chat unsubscribed without deleting its row", async () => {
     await repo.subscribe("12345", "2026-06-11T10:00:00.000Z");
     expect(
@@ -192,7 +249,7 @@ describe("TelegramSubscriberRepository", () => {
 
     const result = await client.execute({
       sql: `
-        SELECT subscribed, unsubscribed_at, subscriber_data
+        SELECT subscribed, voting_enabled, unsubscribed_at, subscriber_data
         FROM telegram_subscribers
         WHERE chat_id = ?
       `,
@@ -200,6 +257,7 @@ describe("TelegramSubscriberRepository", () => {
     });
     expect(result.rows[0]).toMatchObject({
       subscribed: 0,
+      voting_enabled: 1,
       unsubscribed_at: "2026-06-11T11:00:00.000Z",
       subscriber_data: null,
     });

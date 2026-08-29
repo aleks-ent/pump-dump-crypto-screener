@@ -32,10 +32,11 @@ import { assertScanCompleted, loadLastPumpScanManifest } from "./scan-validation
 import {
   cleanupUnavailableTelegramRecipient,
   ensureClassifierTelegramRecipient,
+  ensureReadOnlyTelegramRecipient,
 } from "./telegram-delivery.js";
 import { loadTelegramConfig, sendEpisodeAlerts } from "./telegram.js";
 import {
-  resolveTelegramAlertChatIds,
+  resolveTelegramAlertRecipients,
 } from "./telegram-subscribers.js";
 import {
   filterEpisodesSinceAlertCutoff,
@@ -304,9 +305,22 @@ async function runMonitorPipeline(args: {
     subscriberRepo,
     telegram.classifierChatId,
   );
-  const recipientIds = resolveTelegramAlertChatIds(
+  if (telegram.publicChatId) {
+    await ensureReadOnlyTelegramRecipient(subscriberRepo, telegram.publicChatId);
+  }
+  const recipients = resolveTelegramAlertRecipients(
     telegram.classifierChatId,
+    telegram.publicChatId,
     await subscriberRepo.listChatIds(),
+  );
+
+  const voteCountsByEpisode = new Map(
+    await Promise.all(
+      [...pumpsToAlert, ...currentDumps].map(async (episode) => [
+        episode.index,
+        await votingRepo.countVotes(episode.index),
+      ] as const),
+    ),
   );
 
   const chartImagesByEpisode = new Map<string, TelegramChartImage>();
@@ -331,14 +345,16 @@ async function runMonitorPipeline(args: {
   let deliveredChats = 0;
   let failedChats = 0;
   let messageCount = 0;
-  for (const chatId of recipientIds) {
+  for (const recipient of recipients) {
+    const { chatId } = recipient;
     try {
       const sentAlerts = await sendEpisodeAlerts(
         { ...telegram, chatId },
         pumpsToAlert,
         currentDumps,
         {
-          votingButtons: true,
+          voteCountsByEpisode,
+          votingButtons: recipient.votingButtons,
           chartImagesByEpisode,
           onChartError: (episode, error) => {
             console.error(
@@ -362,28 +378,30 @@ async function runMonitorPipeline(args: {
       deliveredChats += 1;
     } catch (error) {
       failedChats += 1;
-      const cleanup = await cleanupUnavailableTelegramRecipient(
-        subscriberRepo,
-        chatId,
-        error,
-      );
-      if (cleanup.permanent) {
-        if (cleanup.cleanupError) {
-          console.error(
-            `Failed to mark Telegram chat ${chatId} unsubscribed: ${
-              cleanup.cleanupError instanceof Error
-                ? cleanup.cleanupError.message
-                : String(cleanup.cleanupError)
-            }`,
-          );
-        } else if (cleanup.unsubscribed) {
-          console.error(
-            `Marked permanently unavailable Telegram chat ${chatId} unsubscribed`,
-          );
-        } else {
-          console.error(
-            `Permanently unavailable Telegram chat ${chatId} was not an active subscriber`,
-          );
+      if (recipient.role !== "public") {
+        const cleanup = await cleanupUnavailableTelegramRecipient(
+          subscriberRepo,
+          chatId,
+          error,
+        );
+        if (cleanup.permanent) {
+          if (cleanup.cleanupError) {
+            console.error(
+              `Failed to mark Telegram chat ${chatId} unsubscribed: ${
+                cleanup.cleanupError instanceof Error
+                  ? cleanup.cleanupError.message
+                  : String(cleanup.cleanupError)
+              }`,
+            );
+          } else if (cleanup.unsubscribed) {
+            console.error(
+              `Marked permanently unavailable Telegram chat ${chatId} unsubscribed`,
+            );
+          } else {
+            console.error(
+              `Permanently unavailable Telegram chat ${chatId} was not an active subscriber`,
+            );
+          }
         }
       }
       console.error(
@@ -395,7 +413,7 @@ async function runMonitorPipeline(args: {
   }
 
   console.error(
-    `Telegram alerts sent to ${deliveredChats}/${recipientIds.length} recipient(s) for ${pumpsToAlert.length} new pump(s) and ${currentDumps.length} new dump(s) (${messageCount} message${messageCount === 1 ? "" : "s"}${failedChats > 0 ? `, ${failedChats} failed chat(s)` : ""})`,
+    `Telegram alerts sent to ${deliveredChats}/${recipients.length} recipient(s) for ${pumpsToAlert.length} new pump(s) and ${currentDumps.length} new dump(s) (${messageCount} message${messageCount === 1 ? "" : "s"}${failedChats > 0 ? `, ${failedChats} failed chat(s)` : ""})`,
   );
 }
 

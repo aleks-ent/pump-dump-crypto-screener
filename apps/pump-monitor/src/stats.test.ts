@@ -18,6 +18,7 @@ import {
   formatVotedEpisodeAlertMessage,
   formatDumpStatsMessages,
   normalizeTelegramChatId,
+  normalizePublicTelegramChatId,
   sendEpisodeAlerts,
   sendTelegramMessage,
   sendTelegramPhoto,
@@ -166,6 +167,19 @@ describe("normalizeTelegramChatId", () => {
   it("rejects malformed or unsafe chat IDs", () => {
     expect(normalizeTelegramChatId("friend")).toBeNull();
     expect(normalizeTelegramChatId(Number.MAX_SAFE_INTEGER + 1)).toBeNull();
+  });
+
+  it("validates an optional public destination distinct from the classifier", () => {
+    expect(normalizePublicTelegramChatId("", "36772199")).toBeUndefined();
+    expect(
+      normalizePublicTelegramChatId(" -1001234567890 ", "36772199"),
+    ).toBe("-1001234567890");
+    expect(() =>
+      normalizePublicTelegramChatId("public-group", "36772199"),
+    ).toThrow("numeric Telegram chat ID");
+    expect(() =>
+      normalizePublicTelegramChatId("36772199", "36772199"),
+    ).toThrow("must differ");
   });
 });
 
@@ -405,7 +419,7 @@ describe("Telegram message delivery", () => {
     expect(body).not.toHaveProperty("link_preview_options");
   });
 
-  it("adds voting buttons for every alert recipient", async () => {
+  it("supports a read-only alert recipient while preserving voting elsewhere", async () => {
     const client = createMemoryDbClient();
     const repo = new PumpRepository(client);
     await repo.applySchema();
@@ -421,6 +435,12 @@ describe("Telegram message delivery", () => {
         { botToken: "token", chatId: "public-user" },
         [pump],
         [],
+        {
+          votingButtons: false,
+          voteCountsByEpisode: new Map([
+            [pump.index, { pump: 2, dump: 1, none: 0 }],
+          ]),
+        },
       );
       const adminAlerts = await sendEpisodeAlerts(
         { botToken: "token", chatId: "admin-user" },
@@ -453,12 +473,12 @@ describe("Telegram message delivery", () => {
     const adminBody = JSON.parse(
       String((fetchMock.mock.calls[1]?.[1] as RequestInit).body),
     ) as Record<string, unknown>;
-    expect(publicBody.reply_markup).toEqual(buildClassificationKeyboard(pump.index));
+    expect(publicBody).not.toHaveProperty("reply_markup");
     expect(adminBody.reply_markup).toEqual(buildClassificationKeyboard(pump.index));
-    expect(String(publicBody.text)).not.toContain("Votes:");
+    expect(String(publicBody.text)).toContain("Votes: 📈 2 · 📉 1 · ⚪ 0");
   });
 
-  it("sends and records one chart message with alert caption and voting buttons", async () => {
+  it("sends and records one read-only chart message with existing vote totals", async () => {
     const client = createMemoryDbClient();
     const repo = new PumpRepository(client);
     await repo.applySchema();
@@ -477,6 +497,10 @@ describe("Telegram message delivery", () => {
           [pump],
           [],
           {
+            votingButtons: false,
+            voteCountsByEpisode: new Map([
+              [pump.index, { pump: 3, dump: 0, none: 1 }],
+            ]),
             chartImagesByEpisode: new Map([
               [
                 pump.index,
@@ -506,9 +530,10 @@ describe("Telegram message delivery", () => {
     const form = (fetchMock.mock.calls[0]?.[1] as RequestInit).body as FormData;
     expect(String(form.get("caption"))).toContain("<b>New pump detected</b>");
     expect(String(form.get("caption"))).toContain("FUEL/USDT");
-    expect(JSON.parse(String(form.get("reply_markup")))).toEqual(
-      buildClassificationKeyboard(pump.index),
+    expect(String(form.get("caption"))).toContain(
+      "Votes: 📈 3 · 📉 0 · ⚪ 1",
     );
+    expect(form.get("reply_markup")).toBeNull();
     expect(onSent).toHaveBeenCalledWith({
       episodeId: pump.index,
       chatId: "public-user",

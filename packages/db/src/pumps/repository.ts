@@ -383,6 +383,16 @@ async function migrateTelegramSubscribersState(client: Client): Promise<void> {
       "ALTER TABLE telegram_subscribers ADD COLUMN subscriber_data TEXT",
     );
   }
+
+  try {
+    await client.execute("SELECT voting_enabled FROM telegram_subscribers LIMIT 1");
+  } catch {
+    await client.execute(
+      `ALTER TABLE telegram_subscribers
+       ADD COLUMN voting_enabled INTEGER NOT NULL DEFAULT 1
+       CHECK (voting_enabled IN (0, 1))`,
+    );
+  }
 }
 
 async function backfillTelegramSubscriberEvents(client: Client): Promise<void> {
@@ -396,6 +406,7 @@ async function backfillTelegramSubscriberEvents(client: Client): Promise<void> {
         )
         SELECT chat_id, 'subscribe', subscribed_at
         FROM telegram_subscribers
+        WHERE voting_enabled = 1
       `.trim(),
       `
         INSERT OR IGNORE INTO telegram_subscriber_events (
@@ -406,6 +417,7 @@ async function backfillTelegramSubscriberEvents(client: Client): Promise<void> {
         SELECT chat_id, 'unsubscribe', unsubscribed_at
         FROM telegram_subscribers
         WHERE subscribed = 0
+          AND voting_enabled = 1
           AND unsubscribed_at IS NOT NULL
       `.trim(),
     ],

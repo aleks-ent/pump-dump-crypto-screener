@@ -13,7 +13,7 @@ import {
   markLegacyTelegramSubscribersMigrated,
   migratedTelegramSubscribersPath,
   normalizeTelegramChatId,
-  resolveTelegramAlertChatIds,
+  resolveTelegramAlertRecipients,
   telegramSubscribersPath,
 } from "./telegram-subscribers.js";
 
@@ -75,10 +75,21 @@ describe("Telegram subscribers", () => {
     ).toEqual({ chatIds: ["12345"] });
   });
 
-  it("always includes the classifier chat in alert recipients", () => {
-    expect(resolveTelegramAlertChatIds("36772199", [])).toEqual(["36772199"]);
+  it("adds a read-only public destination and gives that role precedence", () => {
     expect(
-      resolveTelegramAlertChatIds("36772199", ["12345", "36772199"]),
-    ).toEqual(["36772199", "12345"]);
+      resolveTelegramAlertRecipients(
+        "36772199",
+        "-10098765",
+        ["12345", "-10098765", "36772199"],
+      ),
+    ).toEqual([
+      {
+        chatId: "36772199",
+        role: "classifier",
+        votingButtons: true,
+      },
+      { chatId: "12345", role: "subscriber", votingButtons: true },
+      { chatId: "-10098765", role: "public", votingButtons: false },
+    ]);
   });
 });
