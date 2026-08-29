@@ -43,6 +43,7 @@ export { normalizeTelegramChatId };
 const CONTACT_EMAIL = "aleksent@yahoo.com";
 const PROJECT_REPO_URL =
   "https://github.com/aleks-ent/pump-dump-crypto-screener";
+const PUBLIC_CHAT_URL = "https://t.me/pumpdumpscreenerautobot";
 
 interface TelegramErrorPayload {
   error_code?: unknown;
@@ -237,7 +238,8 @@ export function formatEpisodeBlock(episode: StoredPump): string {
     `<b>${escapeHtml(episode.coin)}</b> · peak ${episode.peakScore}`,
     `${fmtUtc(episode.startMs)} → ${fmtUtc(episode.endMs)} UTC (${fmtDuration(episode.durationMinutes)})`,
     `Exchange: ${escapeHtml(exchanges)}`,
-    `<a href="${escapeHtml(episode.tradingViewUrl)}">TradingView chart</a>`,
+    `<a href="${escapeHtml(episode.tradingViewUrl)}">📊 TradingView chart</a>`,
+    `<a href="${PUBLIC_CHAT_URL}">💬 Discuss</a> in the public chat`,
   ];
   if (episode.classification) {
     lines.push(`Classification: ${classificationLabel(episode.classification)}`);

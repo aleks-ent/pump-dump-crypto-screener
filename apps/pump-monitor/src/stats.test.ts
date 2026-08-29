@@ -95,6 +95,12 @@ describe("PumpRepository list + telegram formatting", () => {
     const message = formatPumpAlertMessage(pump);
     expect(message).toContain("New pump detected");
     expect(message).toContain("WLD/USDT");
+    expect(message).toContain(
+      '<a href="https://example.com/chart">📊 TradingView chart</a>',
+    );
+    expect(message).toContain(
+      '<a href="https://t.me/pumpdumpscreenerautobot">💬 Discuss</a> in the public chat',
+    );
     const keyboard = buildClassificationKeyboard(pump.index);
     expect(keyboard.inline_keyboard[0]).toHaveLength(3);
   });
