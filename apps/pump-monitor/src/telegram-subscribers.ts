@@ -41,11 +41,47 @@ export function loadLegacyTelegramSubscriberIds(baseDir: string): string[] {
   }
 }
 
-export function resolveTelegramAlertChatIds(
+export type TelegramAlertRecipientRole =
+  | "classifier"
+  | "subscriber"
+  | "public";
+
+export interface TelegramAlertRecipient {
+  chatId: string;
+  role: TelegramAlertRecipientRole;
+  votingButtons: boolean;
+}
+
+export function resolveTelegramAlertRecipients(
   classifierChatId: string,
+  publicChatId: string | undefined,
   subscriberIds: readonly string[],
-): string[] {
-  return [...new Set([classifierChatId, ...subscriberIds])];
+): TelegramAlertRecipient[] {
+  const recipients = new Map<string, TelegramAlertRecipient>();
+  recipients.set(classifierChatId, {
+    chatId: classifierChatId,
+    role: "classifier",
+    votingButtons: true,
+  });
+
+  for (const chatId of subscriberIds) {
+    if (recipients.has(chatId)) continue;
+    recipients.set(chatId, {
+      chatId,
+      role: "subscriber",
+      votingButtons: true,
+    });
+  }
+
+  if (publicChatId) {
+    recipients.set(publicChatId, {
+      chatId: publicChatId,
+      role: "public",
+      votingButtons: false,
+    });
+  }
+
+  return [...recipients.values()];
 }
 
 export function markLegacyTelegramSubscribersMigrated(baseDir: string): void {

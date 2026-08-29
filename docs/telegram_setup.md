@@ -1,36 +1,46 @@
 # Telegram setup
 
 Pump alerts (`pnpm pump:monitor`) and the interactive bot (`pnpm pump:bot`) need a
-Telegram bot token and your admin/classifier chat ID. They go in `config.js` (copy from
-[`config.example.js`](../config.example.js) if you have not already).
+Telegram bot token and your admin/classifier chat ID. An optional public group or
+channel can receive the same alerts as a read-only feed. These values go in `config.js`
+(copy from [`config.example.js`](../config.example.js) if you have not already).
 
 ```javascript
 telegramBotToken: "123456789:ABCdefGHIjklMNOpqrsTUVwxyz",
 classifierTelegramChatId: "36772199",
+publicTelegramChatId: "-1001234567890",
 ```
 
 Anyone who discovers the bot can use it without approval. Sending `/start`
 automatically subscribes that private chat or group to new pump and dump alerts.
-Subscribers can use `/stats`, `/runs`, and `/about`. Every alert includes **📈 Pump |
-📉 Dump | ⚪ None** voting buttons. Each subscribed chat gets one vote per event; when
-anyone votes, the bot edits every recorded alert message for that event with compact
-totals like `Votes: 📈 3 · 📉 1 · ⚪ 0`.
+Subscribers can use `/stats`, `/runs`, and `/about`. Subscriber alerts include
+**📈 Pump | 📉 Dump | ⚪ None** voting buttons. Each subscribed chat gets one vote per
+event; when anyone votes, the bot edits every recorded alert message for that event
+with compact totals like `Votes: 📈 3 · 📉 1 · ⚪ 0`.
+
+`publicTelegramChatId` is an always-on, read-only destination. Its alerts never include
+voting buttons and callbacks from that chat are rejected. The bot still edits its
+alert captions to show aggregate vote totals after votes arrive from subscriber or
+classifier chats. The vote line remains hidden until at least one vote exists. If the
+same chat previously subscribed with `/start`, the configured read-only role wins.
 
 The monitor also renders a 5-minute candlestick and volume chart for each new event.
 Each alert is one Telegram photo message: the existing alert details are its caption,
-and the voting buttons remain attached to the same message. The chart uses the market
-data already fetched by the monitor and falls back to the event exchange's public API
-when local coverage is incomplete. A chart load, render, or upload failure is logged;
-the monitor falls back to the same alert as a text-only message.
+with voting buttons attached only for voting-enabled recipients. The chart uses the
+market data already fetched by the monitor and falls back to the event exchange's
+public API when local coverage is incomplete. A chart load, render, or upload failure
+is logged; the monitor falls back to the same alert as a text-only message.
 
 `classifierTelegramChatId` is the always-subscribed admin chat. Its vote also updates
 the legacy episode `classification` field so existing stats/history behavior remains
 compatible.
 
-The admin/classifier chat always receives alerts, even before it sends `/start`. Other chats
-must send `/start` to subscribe.
+The admin/classifier and configured public chats always receive alerts, even before
+they send `/start`. Other chats must send `/start` to subscribe.
 
-After deploying the schema change to the VDS, apply it to Turso once:
+After deploying, apply the schema to Turso once. This adds the
+`telegram_subscribers.voting_enabled` capability flag used to keep the configured
+public destination out of the voting subscriber list:
 
 ```bash
 pnpm db:bootstrap
@@ -51,6 +61,9 @@ automatically before restarting PM2.
 4. Put that value in `config.js` as `telegramBotToken`.
 5. Message [@userinfobot](https://t.me/userinfobot) to get your private chat ID, then
    set it as `classifierTelegramChatId`.
+6. For a public feed, add the bot to the group or channel, grant it permission to post,
+   obtain that chat's numeric ID (normally a negative `-100...` value), and set it as
+   `publicTelegramChatId`. A channel requires the bot to be an administrator.
 
 Use your private chat for `classifierTelegramChatId`. If you configure a group chat,
 anyone in that group who can press its voting buttons controls that chat's one event
@@ -130,5 +143,7 @@ API traffic. Do not publish the bot token itself.
 | Bot does not reply in a group | Add the bot to the group; some groups need `/setprivacy` disabled in BotFather (`/setprivacy` → your bot → **Disable**) so it sees all messages |
 | User does not receive alerts | Send `/start` in that exact private chat or group |
 | User no longer wants alerts | Send `/stop`; `/stats`, `/runs`, and `/about` remain available |
+| Public feed receives no alerts | Verify `publicTelegramChatId`, grant the bot permission to post, and restart both `pump-monitor` and `pump-bot` |
+| Public feed shows voting buttons | Verify it is configured as `publicTelegramChatId` and both processes are running the same build |
 | Alert does not show voting buttons | Verify both `pnpm pump:monitor` and `pnpm pump:bot` are deployed from the voting build |
 | Alerts work, buttons do not | Run `pnpm pump:bot` alongside or after `pump:monitor` |

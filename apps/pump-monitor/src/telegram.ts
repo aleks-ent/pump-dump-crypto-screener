@@ -20,6 +20,7 @@ export interface TelegramApiConfig {
 
 export interface TelegramRuntimeConfig extends TelegramApiConfig {
   classifierChatId: string;
+  publicChatId?: string;
 }
 
 export interface TelegramConfig extends TelegramApiConfig {
@@ -145,13 +146,40 @@ export async function loadTelegramConfig(): Promise<TelegramRuntimeConfig | null
   const cfg = (mod.default ?? mod) as {
     telegramBotToken?: string;
     classifierTelegramChatId?: string | number;
+    publicTelegramChatId?: string | number;
   };
   const botToken = cfg.telegramBotToken?.trim() ?? "";
   const classifierChatId = normalizeTelegramChatId(
     cfg.classifierTelegramChatId,
   );
   if (!botToken || !classifierChatId) return null;
-  return { botToken, classifierChatId };
+  const publicChatId = normalizePublicTelegramChatId(
+    cfg.publicTelegramChatId,
+    classifierChatId,
+  );
+  return { botToken, classifierChatId, publicChatId };
+}
+
+export function normalizePublicTelegramChatId(
+  value: unknown,
+  classifierChatId: string,
+): string | undefined {
+  if (value == null || (typeof value === "string" && value.trim() === "")) {
+    return undefined;
+  }
+
+  const publicChatId = normalizeTelegramChatId(value);
+  if (!publicChatId) {
+    throw new Error(
+      "publicTelegramChatId must be a numeric Telegram chat ID",
+    );
+  }
+  if (publicChatId === classifierChatId) {
+    throw new Error(
+      "publicTelegramChatId must differ from classifierTelegramChatId",
+    );
+  }
+  return publicChatId;
 }
 
 function escapeHtml(text: string): string {

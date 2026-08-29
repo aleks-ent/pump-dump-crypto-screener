@@ -118,6 +118,52 @@ describe("Telegram classifier chat", () => {
     });
   });
 
+  it("rejects vote callbacks from the read-only public destination", async () => {
+    const repos = await setupVotingRepos();
+    const fetchMock = mockTelegramSuccess();
+    const log = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await handleClassificationCallback(
+        {
+          telegram: {
+            botToken: "token",
+            classifierChatId: "36772199",
+            publicChatId: "-10098765",
+          },
+          pump: { minScore: 80, minDumpScore: 55 },
+        },
+        {
+          id: "callback-public",
+          data: encodeClassificationCallback("pump", repos.episodeId),
+          message: { message_id: 30, chat: { id: -10098765 } },
+        },
+        log,
+        repos,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(log).toHaveBeenCalledWith(
+      "Ignored vote callback from read-only public chat -10098765",
+    );
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      "answerCallbackQuery",
+    );
+    const answerBody = JSON.parse(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body),
+    ) as Record<string, unknown>;
+    expect(answerBody.text).toBe("Voting is not available in this chat");
+    expect(await repos.votingRepo.countVotes(repos.episodeId)).toEqual({
+      pump: 0,
+      dump: 0,
+      none: 0,
+    });
+  });
+
   it("edits mixed photo and text deliveries with the matching Telegram method", async () => {
     const repos = await setupVotingRepos("photo");
     await repos.votingRepo.recordMessage(
@@ -177,6 +223,72 @@ describe("Telegram classifier chat", () => {
     expect(textBody.text).toContain("Votes: 📈 0 · 📉 1 · ⚪ 0");
     expect(textBody.reply_markup).toBeDefined();
     expect(textBody.link_preview_options).toEqual({ is_disabled: true });
+  });
+
+  it("updates public vote totals while explicitly clearing its keyboard", async () => {
+    const repos = await setupVotingRepos();
+    await repos.subscriberRepo.subscribe(
+      "-10098765",
+      "2026-06-11T10:04:00.000Z",
+      null,
+      false,
+    );
+    await repos.votingRepo.recordMessage(
+      repos.episodeId,
+      "-10098765",
+      30,
+      "2026-06-11T10:05:00.000Z",
+      "text",
+    );
+    const fetchMock = mockTelegramSuccess();
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await handleClassificationCallback(
+        {
+          telegram: {
+            botToken: "token",
+            classifierChatId: "36772199",
+            publicChatId: "-10098765",
+          },
+          pump: { minScore: 80, minDumpScore: 55 },
+        },
+        {
+          id: "callback-public-sync",
+          data: encodeClassificationCallback("pump", repos.episodeId),
+          message: { message_id: 20, chat: { id: 12345678 } },
+        },
+        vi.fn(),
+        repos,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    const editBodies = fetchMock.mock.calls
+      .filter((call) => String(call[0]).includes("editMessageText"))
+      .map(
+        (call) =>
+          JSON.parse(String((call[1] as RequestInit).body)) as Record<
+            string,
+            unknown
+          >,
+      );
+    expect(editBodies).toHaveLength(3);
+
+    const publicBody = editBodies.find(
+      (body) => body.chat_id === "-10098765",
+    );
+    expect(publicBody?.text).toContain("Votes: 📈 1 · 📉 0 · ⚪ 0");
+    expect(publicBody?.reply_markup).toEqual({ inline_keyboard: [] });
+
+    for (const body of editBodies.filter(
+      (candidate) => candidate.chat_id !== "-10098765",
+    )) {
+      expect(body.reply_markup).toEqual({
+        inline_keyboard: expect.any(Array),
+      });
+    }
   });
 
   it("counts admin votes and syncs the legacy classification field", async () => {
