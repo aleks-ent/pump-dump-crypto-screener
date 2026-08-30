@@ -9,6 +9,7 @@ channel can receive the same alerts as a read-only feed. These values go in `con
 telegramBotToken: "123456789:ABCdefGHIjklMNOpqrsTUVwxyz",
 classifierTelegramChatId: "36772199",
 publicTelegramChatId: "-1001234567890",
+publicTelegramChatUrl: "https://t.me/example_chat", // optional override
 ```
 
 Anyone who discovers the bot can use it without approval. Sending `/start`
@@ -19,10 +20,14 @@ event; when anyone votes, the bot edits every recorded alert message for that ev
 with compact totals like `Votes: 📈 3 · 📉 1 · ⚪ 0`.
 
 `publicTelegramChatId` is an always-on, read-only destination. Its alerts never include
-voting buttons and callbacks from that chat are rejected. The bot still edits its
-alert captions to show aggregate vote totals after votes arrive from subscriber or
-classifier chats. The vote line remains hidden until at least one vote exists. If the
-same chat previously subscribed with `/start`, the configured read-only role wins.
+voting buttons or a redundant link back to the same chat, and callbacks from that chat
+are rejected. Other subscribers get a **Discuss** link to this destination. The link
+is discovered from Telegram's `getChat` metadata; set `publicTelegramChatUrl` to an
+explicit `https://t.me/...` username or invite URL when the chat metadata does not
+expose one. The bot still edits public alert captions to show aggregate vote totals
+after votes arrive from subscriber or classifier chats. The vote line remains hidden
+until at least one vote exists. If the same chat previously subscribed with `/start`,
+the configured read-only role wins.
 
 The monitor also renders a 5-minute candlestick and volume chart for each new event.
 Each alert is one Telegram photo message: the existing alert details are its caption,
@@ -63,7 +68,9 @@ automatically before restarting PM2.
    set it as `classifierTelegramChatId`.
 6. For a public feed, add the bot to the group or channel, grant it permission to post,
    obtain that chat's numeric ID (normally a negative `-100...` value), and set it as
-   `publicTelegramChatId`. A channel requires the bot to be an administrator.
+   `publicTelegramChatId`. A channel requires the bot to be an administrator. For a
+   private group whose username or invite link is not returned by Telegram, also set
+   `publicTelegramChatUrl` to its `https://t.me/+...` invite link.
 
 Use your private chat for `classifierTelegramChatId`. If you configure a group chat,
 anyone in that group who can press its voting buttons controls that chat's one event

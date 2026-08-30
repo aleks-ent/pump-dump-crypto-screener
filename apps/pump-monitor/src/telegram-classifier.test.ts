@@ -131,6 +131,7 @@ describe("Telegram classifier chat", () => {
             botToken: "token",
             classifierChatId: "36772199",
             publicChatId: "-10098765",
+            publicChatUrl: "https://t.me/public_chat",
           },
           pump: { minScore: 80, minDumpScore: 55 },
         },
@@ -250,6 +251,7 @@ describe("Telegram classifier chat", () => {
             botToken: "token",
             classifierChatId: "36772199",
             publicChatId: "-10098765",
+            publicChatUrl: "https://t.me/public_chat",
           },
           pump: { minScore: 80, minDumpScore: 55 },
         },
@@ -280,11 +282,15 @@ describe("Telegram classifier chat", () => {
       (body) => body.chat_id === "-10098765",
     );
     expect(publicBody?.text).toContain("Votes: 📈 1 · 📉 0 · ⚪ 0");
+    expect(publicBody?.text).not.toContain("Discuss");
     expect(publicBody?.reply_markup).toEqual({ inline_keyboard: [] });
 
     for (const body of editBodies.filter(
       (candidate) => candidate.chat_id !== "-10098765",
     )) {
+      expect(body.text).toContain(
+        '<a href="https://t.me/public_chat">💬 Discuss</a> in the public chat',
+      );
       expect(body.reply_markup).toEqual({
         inline_keyboard: expect.any(Array),
       });

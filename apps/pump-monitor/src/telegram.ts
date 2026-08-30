@@ -21,6 +21,7 @@ export interface TelegramApiConfig {
 export interface TelegramRuntimeConfig extends TelegramApiConfig {
   classifierChatId: string;
   publicChatId?: string;
+  publicChatUrl?: string;
 }
 
 export interface TelegramConfig extends TelegramApiConfig {
@@ -44,7 +45,6 @@ export { normalizeTelegramChatId };
 const CONTACT_EMAIL = "aleksent@yahoo.com";
 const PROJECT_REPO_URL =
   "https://github.com/aleks-ent/pump-dump-crypto-screener";
-const PUBLIC_CHAT_URL = "https://t.me/pumpdumpscreenerautobot";
 
 interface TelegramErrorPayload {
   error_code?: unknown;
@@ -148,6 +148,7 @@ export async function loadTelegramConfig(): Promise<TelegramRuntimeConfig | null
     telegramBotToken?: string;
     classifierTelegramChatId?: string | number;
     publicTelegramChatId?: string | number;
+    publicTelegramChatUrl?: string;
   };
   const botToken = cfg.telegramBotToken?.trim() ?? "";
   const classifierChatId = normalizeTelegramChatId(
@@ -158,7 +159,12 @@ export async function loadTelegramConfig(): Promise<TelegramRuntimeConfig | null
     cfg.publicTelegramChatId,
     classifierChatId,
   );
-  return { botToken, classifierChatId, publicChatId };
+  const publicChatUrl = await resolvePublicTelegramChatUrl(
+    { botToken },
+    publicChatId,
+    cfg.publicTelegramChatUrl,
+  );
+  return { botToken, classifierChatId, publicChatId, publicChatUrl };
 }
 
 export function normalizePublicTelegramChatId(
@@ -181,6 +187,89 @@ export function normalizePublicTelegramChatId(
     );
   }
   return publicChatId;
+}
+
+export function normalizePublicTelegramChatUrl(
+  value: unknown,
+): string | undefined {
+  if (value == null || (typeof value === "string" && value.trim() === "")) {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    throw new Error("publicTelegramChatUrl must be a Telegram HTTPS URL");
+  }
+
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    throw new Error("publicTelegramChatUrl must be a Telegram HTTPS URL");
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.hostname.toLowerCase() !== "t.me" ||
+    url.pathname === "/"
+  ) {
+    throw new Error("publicTelegramChatUrl must use https://t.me/<chat>");
+  }
+  return url.toString();
+}
+
+export function publicTelegramChatUrlFromChat(
+  chat: unknown,
+): string | undefined {
+  if (chat == null || typeof chat !== "object") return undefined;
+  const record = chat as Record<string, unknown>;
+  if (typeof record.username === "string") {
+    const username = record.username.trim().replace(/^@/, "");
+    if (/^[A-Za-z0-9_]+$/.test(username)) {
+      return `https://t.me/${username}`;
+    }
+  }
+  return normalizePublicTelegramChatUrl(record.invite_link);
+}
+
+export async function fetchPublicTelegramChatUrl(
+  config: TelegramApiConfig,
+  chatId: string,
+): Promise<string | undefined> {
+  const response = await telegramPost(config, "getChat", { chat_id: chatId });
+  const payload = (await response.json()) as TelegramSuccessPayload;
+  if (payload.ok !== true) {
+    const errorCode =
+      typeof payload.error_code === "number" ? payload.error_code : response.status;
+    const description =
+      typeof payload.description === "string"
+        ? payload.description
+        : "Telegram getChat returned ok=false";
+    throw new TelegramApiError(
+      "getChat",
+      response.status,
+      errorCode,
+      description,
+    );
+  }
+  return publicTelegramChatUrlFromChat(payload.result);
+}
+
+export async function resolvePublicTelegramChatUrl(
+  config: TelegramApiConfig,
+  publicChatId: string | undefined,
+  configuredUrl: unknown,
+): Promise<string | undefined> {
+  const publicChatUrl = normalizePublicTelegramChatUrl(configuredUrl);
+  if (publicChatUrl || !publicChatId) return publicChatUrl;
+
+  try {
+    return await fetchPublicTelegramChatUrl(config, publicChatId);
+  } catch (error) {
+    console.error(
+      `WARNING: could not resolve the public Telegram chat link for ${publicChatId}: ${
+        error instanceof Error ? error.message : String(error)
+      }; discussion links will be omitted`,
+    );
+    return undefined;
+  }
 }
 
 function escapeHtml(text: string): string {
@@ -257,7 +346,14 @@ function sortPumpsRecentFirst(pumps: StoredPump[]): StoredPump[] {
   return pumps.slice().sort((a, b) => b.startMs - a.startMs || b.peakScore - a.peakScore);
 }
 
-export function formatEpisodeBlock(episode: StoredPump): string {
+export interface TelegramEpisodeMessageOptions {
+  publicChatUrl?: string;
+}
+
+export function formatEpisodeBlock(
+  episode: StoredPump,
+  opts?: TelegramEpisodeMessageOptions,
+): string {
   const exchanges =
     episode.confirmedExchanges.length > 0
       ? episode.confirmedExchanges.join(", ")
@@ -267,8 +363,12 @@ export function formatEpisodeBlock(episode: StoredPump): string {
     `${fmtUtc(episode.startMs)} → ${fmtUtc(episode.endMs)} UTC (${fmtDuration(episode.durationMinutes)})`,
     `Exchange: ${escapeHtml(exchanges)}`,
     `<a href="${escapeHtml(episode.tradingViewUrl)}">📊 TradingView chart</a>`,
-    `<a href="${PUBLIC_CHAT_URL}">💬 Discuss</a> in the public chat`,
   ];
+  if (opts?.publicChatUrl) {
+    lines.push(
+      `<a href="${escapeHtml(opts.publicChatUrl)}">💬 Discuss</a> in the public chat`,
+    );
+  }
   if (episode.classification) {
     lines.push(`Classification: ${classificationLabel(episode.classification)}`);
   }
@@ -276,16 +376,25 @@ export function formatEpisodeBlock(episode: StoredPump): string {
 }
 
 /** @deprecated Use {@link formatEpisodeBlock}. */
-export function formatPumpBlock(pump: StoredPump): string {
-  return formatEpisodeBlock(pump);
+export function formatPumpBlock(
+  pump: StoredPump,
+  opts?: TelegramEpisodeMessageOptions,
+): string {
+  return formatEpisodeBlock(pump, opts);
 }
 
-export function formatPumpAlertMessage(pump: StoredPump): string {
-  return ["<b>New pump detected</b>", formatEpisodeBlock(pump)].join("\n");
+export function formatPumpAlertMessage(
+  pump: StoredPump,
+  opts?: TelegramEpisodeMessageOptions,
+): string {
+  return ["<b>New pump detected</b>", formatEpisodeBlock(pump, opts)].join("\n");
 }
 
-export function formatDumpAlertMessage(dump: StoredPump): string {
-  return ["<b>New dump detected</b>", formatEpisodeBlock(dump)].join("\n");
+export function formatDumpAlertMessage(
+  dump: StoredPump,
+  opts?: TelegramEpisodeMessageOptions,
+): string {
+  return ["<b>New dump detected</b>", formatEpisodeBlock(dump, opts)].join("\n");
 }
 
 const ZERO_VOTE_COUNTS: TelegramEpisodeVoteCounts = {
@@ -303,11 +412,12 @@ export function formatEpisodeVoteStats(
 export function formatVotedEpisodeAlertMessage(
   episode: StoredPump,
   voteCounts: TelegramEpisodeVoteCounts = ZERO_VOTE_COUNTS,
+  opts?: TelegramEpisodeMessageOptions,
 ): string {
   const title = episode.episodeType === "dump" ? "New dump detected" : "New pump detected";
   const lines = [
     `<b>${title}</b>`,
-    formatEpisodeBlock({ ...episode, classification: null }),
+    formatEpisodeBlock({ ...episode, classification: null }, opts),
   ];
   if (voteCounts.pump + voteCounts.dump + voteCounts.none > 0) {
     lines.push(formatEpisodeVoteStats(voteCounts));
@@ -342,11 +452,14 @@ function formatEpisodeStatsSection(
   emptyMessage: (minScore: number) => string,
   minScore: number,
   limit: number,
+  opts?: TelegramEpisodeMessageOptions,
 ): string[] {
   if (episodes.length === 0) {
     return [emptyMessage(minScore)];
   }
-  const blocks = sortPumpsRecentFirst(episodes).map((ep) => `\n${formatEpisodeBlock(ep)}`);
+  const blocks = sortPumpsRecentFirst(episodes).map(
+    (ep) => `\n${formatEpisodeBlock(ep, opts)}`,
+  );
   return chunkEpisodeMessages(
     (_total, part) => headerFor(minScore, limit, part),
     packingHeader(minScore, limit),
@@ -360,6 +473,7 @@ export function formatPumpStatsMessages(
   minScore: number,
   limit = 5,
   activeSubscriberCount?: number,
+  opts?: TelegramEpisodeMessageOptions,
 ): string[] {
   const withSubscriberCount = (message: string): string =>
     activeSubscriberCount == null
@@ -377,6 +491,7 @@ export function formatPumpStatsMessages(
       withSubscriberCount(`No pumps with score &gt; ${min} stored yet.`),
     minScore,
     limit,
+    opts,
   );
 }
 
@@ -384,6 +499,7 @@ export function formatDumpStatsMessages(
   dumps: StoredPump[],
   minScore: number,
   limit = 5,
+  opts?: TelegramEpisodeMessageOptions,
 ): string[] {
   return formatEpisodeStatsSection(
     dumps,
@@ -392,6 +508,7 @@ export function formatDumpStatsMessages(
     (min) => `No dumps with score &gt; ${min} in index.`,
     minScore,
     limit,
+    opts,
   );
 }
 
@@ -401,6 +518,7 @@ export function formatEpisodeStatsMessages(
   minPumpScore: number,
   minDumpScore: number,
   limit = 5,
+  opts?: TelegramEpisodeMessageOptions,
 ): string[] {
   if (pumps.length === 0 && dumps.length === 0) {
     return [
@@ -408,8 +526,8 @@ export function formatEpisodeStatsMessages(
     ];
   }
   return [
-    ...formatPumpStatsMessages(pumps, minPumpScore, limit),
-    ...formatDumpStatsMessages(dumps, minDumpScore, limit),
+    ...formatPumpStatsMessages(pumps, minPumpScore, limit, undefined, opts),
+    ...formatDumpStatsMessages(dumps, minDumpScore, limit, opts),
   ];
 }
 
@@ -639,11 +757,14 @@ async function sendEpisodeAlertMessage(
   opts?: {
     voteCounts?: TelegramEpisodeVoteCounts;
     votingButtons?: boolean;
+    publicChatUrl?: string;
     chartImage?: TelegramChartImage;
     onChartError?: (episode: StoredPump, error: unknown) => void;
   },
 ): Promise<DeliveredEpisodeAlert> {
-  const text = formatVotedEpisodeAlertMessage(episode, opts?.voteCounts);
+  const text = formatVotedEpisodeAlertMessage(episode, opts?.voteCounts, {
+    publicChatUrl: opts?.publicChatUrl,
+  });
   const messageOptions = opts?.votingButtons !== false
     ? { replyMarkup: buildClassificationKeyboard(episode.index) }
     : undefined;
@@ -671,6 +792,7 @@ export async function sendPumpAlertMessage(
   opts?: {
     voteCounts?: TelegramEpisodeVoteCounts;
     votingButtons?: boolean;
+    publicChatUrl?: string;
     chartImage?: TelegramChartImage;
     onChartError?: (episode: StoredPump, error: unknown) => void;
   },
@@ -684,6 +806,7 @@ export async function sendDumpAlertMessage(
   opts?: {
     voteCounts?: TelegramEpisodeVoteCounts;
     votingButtons?: boolean;
+    publicChatUrl?: string;
     chartImage?: TelegramChartImage;
     onChartError?: (episode: StoredPump, error: unknown) => void;
   },
@@ -694,7 +817,7 @@ export async function sendDumpAlertMessage(
 export async function sendPumpAlert(
   config: TelegramConfig,
   pumps: StoredPump[],
-  opts?: { votingButtons?: boolean },
+  opts?: { votingButtons?: boolean; publicChatUrl?: string },
 ): Promise<number> {
   for (const pump of pumps) {
     await sendPumpAlertMessage(config, pump, opts);
@@ -709,6 +832,7 @@ export async function sendEpisodeAlerts(
   opts?: {
     voteCountsByEpisode?: ReadonlyMap<string, TelegramEpisodeVoteCounts>;
     votingButtons?: boolean;
+    publicChatUrl?: string;
     chartImagesByEpisode?: ReadonlyMap<string, TelegramChartImage>;
     onChartError?: (episode: StoredPump, error: unknown) => void;
     onSent?: (alert: SentEpisodeAlert) => Promise<void>;
@@ -719,6 +843,7 @@ export async function sendEpisodeAlerts(
     const delivered = await sendEpisodeAlertMessage(config, pump, {
       voteCounts: opts?.voteCountsByEpisode?.get(pump.index),
       votingButtons: opts?.votingButtons,
+      publicChatUrl: opts?.publicChatUrl,
       chartImage: opts?.chartImagesByEpisode?.get(pump.index),
       onChartError: opts?.onChartError,
     });
@@ -734,6 +859,7 @@ export async function sendEpisodeAlerts(
     const delivered = await sendEpisodeAlertMessage(config, dump, {
       voteCounts: opts?.voteCountsByEpisode?.get(dump.index),
       votingButtons: opts?.votingButtons,
+      publicChatUrl: opts?.publicChatUrl,
       chartImage: opts?.chartImagesByEpisode?.get(dump.index),
       onChartError: opts?.onChartError,
     });
