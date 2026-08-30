@@ -17,8 +17,11 @@ import {
   formatEpisodeVoteStats,
   formatVotedEpisodeAlertMessage,
   formatDumpStatsMessages,
+  fetchPublicTelegramChatUrl,
   normalizeTelegramChatId,
   normalizePublicTelegramChatId,
+  normalizePublicTelegramChatUrl,
+  publicTelegramChatUrlFromChat,
   sendEpisodeAlerts,
   sendTelegramMessage,
   sendTelegramPhoto,
@@ -93,15 +96,18 @@ describe("PumpRepository list + telegram formatting", () => {
       samplePump("WLD/USDT", Date.parse("2026-06-07T00:50:00.000Z"), 100),
     ]);
     const pump = newPumps[0]!;
-    const message = formatPumpAlertMessage(pump);
+    const message = formatPumpAlertMessage(pump, {
+      publicChatUrl: "https://t.me/pumpdumpscreenerchat",
+    });
     expect(message).toContain("New pump detected");
     expect(message).toContain("WLD/USDT");
     expect(message).toContain(
       '<a href="https://example.com/chart">📊 TradingView chart</a>',
     );
     expect(message).toContain(
-      '<a href="https://t.me/pumpdumpscreenerautobot">💬 Discuss</a> in the public chat',
+      '<a href="https://t.me/pumpdumpscreenerchat">💬 Discuss</a> in the public chat',
     );
+    expect(message).not.toContain("pumpdumpscreenerautobot");
     const keyboard = buildClassificationKeyboard(pump.index);
     expect(keyboard.inline_keyboard[0]).toHaveLength(3);
   });
@@ -186,6 +192,56 @@ describe("normalizeTelegramChatId", () => {
     expect(() =>
       normalizePublicTelegramChatId("36772199", "36772199"),
     ).toThrow("must differ");
+  });
+});
+
+describe("public Telegram chat URL", () => {
+  it("validates configured chat and invite links", () => {
+    expect(normalizePublicTelegramChatUrl(" https://t.me/public_chat ")).toBe(
+      "https://t.me/public_chat",
+    );
+    expect(normalizePublicTelegramChatUrl("https://t.me/+invite-code")).toBe(
+      "https://t.me/+invite-code",
+    );
+    expect(() =>
+      normalizePublicTelegramChatUrl("https://example.com/public_chat"),
+    ).toThrow("https://t.me/<chat>");
+  });
+
+  it("builds a link from Telegram chat metadata", () => {
+    expect(publicTelegramChatUrlFromChat({ username: "public_chat" })).toBe(
+      "https://t.me/public_chat",
+    );
+    expect(
+      publicTelegramChatUrlFromChat({ invite_link: "https://t.me/+invite-code" }),
+    ).toBe("https://t.me/+invite-code");
+    expect(publicTelegramChatUrlFromChat({ title: "Private chat" })).toBeUndefined();
+  });
+
+  it("resolves the configured public destination through Telegram getChat", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        result: { id: -10098765, username: "public_chat" },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await expect(
+        fetchPublicTelegramChatUrl({ botToken: "token" }, "-10098765"),
+      ).resolves.toBe("https://t.me/public_chat");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/getChat");
+    const body = JSON.parse(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body),
+    ) as Record<string, unknown>;
+    expect(body.chat_id).toBe("-10098765");
   });
 });
 
@@ -286,6 +342,48 @@ describe("handleStatsCommand", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("omits the discussion self-link only in the public chat", async () => {
+    const client = createMemoryDbClient();
+    const pumpRepo = new PumpRepository(client);
+    await pumpRepo.applySchema();
+    await pumpRepo.upsertPumpEpisodes([
+      samplePump("WLD/USDT", Date.parse("2026-06-07T00:50:00.000Z"), 100),
+    ]);
+    const subscriberRepo = new TelegramSubscriberRepository(client);
+    const fetchMock = mockTelegramSuccess();
+    vi.stubGlobal("fetch", fetchMock);
+    const config = {
+      telegram: {
+        botToken: "token",
+        classifierChatId: "999",
+        publicChatId: "-10098765",
+        publicChatUrl: "https://t.me/public_chat",
+      },
+      pump: { minScore: 80, minDumpScore: 55 },
+    };
+
+    try {
+      await handleStatsCommand(config, "-10098765", {
+        pumpRepo,
+        subscriberRepo,
+      });
+      await handleStatsCommand(config, "111", { pumpRepo, subscriberRepo });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    const publicBody = JSON.parse(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body),
+    ) as Record<string, unknown>;
+    const subscriberBody = JSON.parse(
+      String((fetchMock.mock.calls[1]?.[1] as RequestInit).body),
+    ) as Record<string, unknown>;
+    expect(String(publicBody.text)).not.toContain("Discuss");
+    expect(String(subscriberBody.text)).toContain(
+      '<a href="https://t.me/public_chat">💬 Discuss</a> in the public chat',
+    );
   });
 });
 
@@ -452,6 +550,7 @@ describe("Telegram message delivery", () => {
         { botToken: "token", chatId: "admin-user" },
         [pump],
         [],
+        { publicChatUrl: "https://t.me/public_chat" },
       );
       expect(publicAlerts).toEqual([
         {
@@ -482,6 +581,10 @@ describe("Telegram message delivery", () => {
     expect(publicBody).not.toHaveProperty("reply_markup");
     expect(adminBody.reply_markup).toEqual(buildClassificationKeyboard(pump.index));
     expect(String(publicBody.text)).toContain("Votes: 📈 2 · 📉 1 · ⚪ 0");
+    expect(String(publicBody.text)).not.toContain("Discuss");
+    expect(String(adminBody.text)).toContain(
+      '<a href="https://t.me/public_chat">💬 Discuss</a> in the public chat',
+    );
   });
 
   it("sends and records one read-only chart message with existing vote totals", async () => {
@@ -539,6 +642,7 @@ describe("Telegram message delivery", () => {
     expect(String(form.get("caption"))).toContain(
       "Votes: 📈 3 · 📉 0 · ⚪ 1",
     );
+    expect(String(form.get("caption"))).not.toContain("Discuss");
     expect(form.get("reply_markup")).toBeNull();
     expect(onSent).toHaveBeenCalledWith({
       episodeId: pump.index,

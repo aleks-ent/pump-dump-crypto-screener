@@ -37,6 +37,7 @@ import {
   fetchTelegramSubscriberData,
   normalizeTelegramChatId,
   normalizePublicTelegramChatId,
+  resolvePublicTelegramChatUrl,
   sendTelegramMessage,
   type TelegramConfig,
   type TelegramRuntimeConfig,
@@ -89,6 +90,7 @@ export async function loadPumpBotConfig(): Promise<PumpBotConfig | null> {
     telegramBotToken?: string;
     classifierTelegramChatId?: string | number;
     publicTelegramChatId?: string | number;
+    publicTelegramChatUrl?: string;
     pump?: {
       minScore?: number;
       minDumpScore?: number;
@@ -104,12 +106,17 @@ export async function loadPumpBotConfig(): Promise<PumpBotConfig | null> {
     cfg.publicTelegramChatId,
     classifierChatId,
   );
+  const publicChatUrl = await resolvePublicTelegramChatUrl(
+    { botToken },
+    publicChatId,
+    cfg.publicTelegramChatUrl,
+  );
 
   const pumpCfg = cfg.pump ?? {};
   const minScore = Number(pumpCfg.minScore ?? pumpCfg.statsMinScore ?? 80);
   const minDumpScore = Number(pumpCfg.minDumpScore ?? 55);
   return {
-    telegram: { botToken, classifierChatId, publicChatId },
+    telegram: { botToken, classifierChatId, publicChatId, publicChatUrl },
     pump: { minScore, minDumpScore },
   };
 }
@@ -355,6 +362,12 @@ export async function handleStatsCommand(
       config.pump.minScore,
       STATS_EPISODES_LIMIT,
       activeSubscriberCount,
+      {
+        publicChatUrl:
+          chatId === config.telegram.publicChatId
+            ? undefined
+            : config.telegram.publicChatUrl,
+      },
     );
   };
   const messages = repositories
@@ -459,7 +472,6 @@ export async function handleClassificationCallback(
     }
 
     const voteCounts = await votingRepo.countVotes(parsed.pumpId);
-    const text = formatVotedEpisodeAlertMessage(episode, voteCounts);
     const votingReplyMarkup = buildClassificationKeyboard(parsed.pumpId);
     const currentMessageKind: TelegramMessageKind = callbackQuery.message?.photo?.length
       ? "photo"
@@ -493,6 +505,12 @@ export async function handleClassificationCallback(
         const editAlert = message.messageKind === "photo"
           ? editMessageCaption
           : editMessageText;
+        const text = formatVotedEpisodeAlertMessage(episode, voteCounts, {
+          publicChatUrl:
+            message.chatId === config.telegram.publicChatId
+              ? undefined
+              : config.telegram.publicChatUrl,
+        });
         await editAlert(
           config.telegram,
           message.chatId,

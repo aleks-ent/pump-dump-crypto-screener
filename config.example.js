@@ -7,6 +7,8 @@ export default {
   classifierTelegramChatId: "",
   // Optional read-only group/channel that always receives alerts without voting buttons.
   publicTelegramChatId: "",
+  // Optional t.me username/invite URL override; normally discovered from the chat ID.
+  publicTelegramChatUrl: "",
   fetch: {
     intervals: ["1m", "5m"],
   },

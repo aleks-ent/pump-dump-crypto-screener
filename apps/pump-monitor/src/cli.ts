@@ -355,6 +355,8 @@ async function runMonitorPipeline(args: {
         {
           voteCountsByEpisode,
           votingButtons: recipient.votingButtons,
+          publicChatUrl:
+            recipient.role === "public" ? undefined : telegram.publicChatUrl,
           chartImagesByEpisode,
           onChartError: (episode, error) => {
             console.error(

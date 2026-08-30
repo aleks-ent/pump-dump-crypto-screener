@@ -28,7 +28,7 @@ pnpm install
 cp config.example.js config.js   # fill in Turso + Telegram (see table above)
 ```
 
-Edit `config.js` — at minimum, configure `database`, `telegramBotToken`, and your private `classifierTelegramChatId`. Optionally set `publicTelegramChatId` for an always-on public group or channel feed without voting controls. Anyone who sends `/start` is automatically subscribed to alerts and can use `/stats`, `/runs`, and `/about`; only the classifier chat syncs votes to the legacy classification field. Pump lookback and scan settings live under `pump` (defaults in [`config.example.js`](config.example.js)):
+Edit `config.js` — at minimum, configure `database`, `telegramBotToken`, and your private `classifierTelegramChatId`. Optionally set `publicTelegramChatId` for an always-on public group or channel feed without voting controls. The bot discovers that destination's discussion link; `publicTelegramChatUrl` can override it with an explicit `https://t.me/...` username or invite URL. Anyone who sends `/start` is automatically subscribed to alerts and can use `/stats`, `/runs`, and `/about`; only the classifier chat syncs votes to the legacy classification field. Pump lookback and scan settings live under `pump` (defaults in [`config.example.js`](config.example.js)):
 
 ```javascript
 database: {
@@ -38,6 +38,7 @@ database: {
 telegramBotToken: "123456789:ABC...",
 classifierTelegramChatId: "36772199",
 publicTelegramChatId: "-1001234567890", // optional read-only group/channel
+publicTelegramChatUrl: "https://t.me/example_chat", // optional link override
 web: {
   port: 3000,    // local app server; nginx terminates public HTTP/HTTPS
   host: "127.0.0.1",
@@ -152,7 +153,7 @@ delisted instruments from subsequent fetches and scans.
 
 On disk: `data/market_stats/` (`archives/`, `api_fallback/raw/`, `reports/`). Cached series are skipped on repeat runs. Nothing is ever pruned automatically — see [Disk usage and retention](#disk-usage-and-retention).
 
-Subscriber and classifier alerts have **Pump | Dump | None** voting buttons. The classifier chat's vote also updates `pumps.classification`. A configured `publicTelegramChatId` receives the same alert without buttons; when votes arrive elsewhere, its message is updated with the aggregate totals while remaining read-only.
+Subscriber and classifier alerts have **Pump | Dump | None** voting buttons and a link to the configured public discussion chat. The classifier chat's vote also updates `pumps.classification`. A configured `publicTelegramChatId` receives the same alert without buttons or the redundant self-link; when votes arrive elsewhere, its message is updated with the aggregate totals while remaining read-only.
 
 <p align="center">
   <img src="docs/assets/telegram-bot-alert.png" alt="Telegram bot — pump alert with peak score, window, TradingView link, and /stats /runs /about commands" width="400"/>
