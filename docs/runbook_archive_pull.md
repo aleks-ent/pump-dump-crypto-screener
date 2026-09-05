@@ -87,7 +87,7 @@ pnpm fetch:archives:exchange -- --exchange binance --processes 16
 pnpm fetch:archives:exchange -- --exchange bybit --processes 8
 ```
 
-Per-worker tuning: `--file-workers` (per series), `--max-downloads` (per process). Gap records are written per shard then merged into `archive_gaps.ndjson`.
+Per-worker tuning: `--file-workers` (per series), `--max-downloads` (per process). Gap records are written per exchange-specific shard, merged into the current-run `archive_gaps.ndjson`, then the shard files are removed.
 
 ## Output layout
 

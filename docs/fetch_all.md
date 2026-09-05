@@ -42,8 +42,9 @@ instruments are picked up automatically.
    - REST fallback **per missing archive day** (not the full window) and for **today**
      from 00:00 UTC through `--end` (also used for Bybit spot and when
      `bybit_skip_public_archives: true` in `config/archives.yaml`)
-8. **Merge results** — gap records → `archive_gaps.ndjson`, run summary →
-   `archive_run_manifest.json`.
+8. **Merge results** — current-run gap records → `archive_gaps.ndjson`, run summary →
+   `archive_run_manifest.json`. The gap report is replaced at the beginning of each run;
+   worker shard files are removed after they are merged.
 
 ## Output layout
 

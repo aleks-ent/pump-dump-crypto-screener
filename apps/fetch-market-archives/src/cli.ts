@@ -4,7 +4,7 @@ import { Command } from "commander";
 import pLimit from "p-limit";
 import { runArchiveSeries, runTasksParallel, UrlCache } from "@screener/archive";
 import { resolveRepoPath } from "@screener/core";
-import { appendArchiveGaps, writeArchiveManifest } from "@screener/storage";
+import { writeArchiveGaps, writeArchiveManifest } from "@screener/storage";
 import { loadUniverse } from "@screener/universe";
 import { makeHttpClient, prepareArchiveRun } from "./run-context.js";
 
@@ -148,7 +148,7 @@ async function main(): Promise<void> {
     },
   );
 
-  appendArchiveGaps(baseDir, runState.gapRecords);
+  writeArchiveGaps(baseDir, runState.gapRecords);
 
   const manifestPath = writeArchiveManifest(baseDir, {
     generated_at_utc: new Date().toISOString(),
