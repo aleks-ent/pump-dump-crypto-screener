@@ -4,7 +4,11 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { Command } from "commander";
 import { resolveRepoPath } from "@screener/core";
-import { seriesKey, writeArchiveIncompleteReport } from "@screener/storage";
+import {
+  resetArchiveGapReports,
+  seriesKey,
+  writeArchiveIncompleteReport,
+} from "@screener/storage";
 import { migrateLegacySharedNdjson } from "@screener/storage";
 import { prepareArchiveRun, symbolCliArgs } from "./run-context.js";
 import {
@@ -168,6 +172,8 @@ async function main(): Promise<void> {
   const exchangesToRun = exchanges.filter((ex) =>
     ctx.pending.some((t) => t.instrument.exchange === ex),
   );
+  const baseDir = resolveRepoPath(output);
+  resetArchiveGapReports(baseDir);
 
   if (exchangesToRun.length === 0) {
     log("Nothing to fetch — all filtered series already on disk.");
@@ -212,6 +218,7 @@ async function main(): Promise<void> {
     // run-all already discovered + wrote the full instrument index above, so
     // each exchange process must not re-discover and race the index file.
     args.push("--skip-discovery");
+    args.push("--preserve-gap-report");
     if (opts.config) args.push("--config", opts.config);
     if (opts.noFallback) args.push("--no-fallback");
     args.push(...symbolCliArgs(symbols));
@@ -261,7 +268,6 @@ async function main(): Promise<void> {
   const stillPending = after.pending.filter((t) =>
     attemptedKeys.has(seriesKey(t.instrument, t.interval)),
   );
-  const baseDir = resolveRepoPath(output);
   const reasonRows = loadExchangeIncompleteRows(baseDir, exchanges);
   const reasonMap = buildReasonMap(reasonRows);
   const incompleteCoins = enrichCoinsWithReasons(

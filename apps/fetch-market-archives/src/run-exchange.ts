@@ -4,8 +4,10 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { Command } from "commander";
 import {
+  clearExchangeArchiveGapShards,
   mergeShardArchiveGaps,
   mergeShardArchiveIncomplete,
+  resetArchiveGapReports,
   writeArchiveManifest,
 } from "@screener/storage";
 import {
@@ -63,6 +65,10 @@ async function main(): Promise<void> {
     .option("--file-workers <n>", "Parallel file downloads per series (per worker)", "8")
     .option("--max-downloads <n>", "Per-worker global download cap", "24")
     .option("--skip-discovery", "Reuse reports/instrument_index.json (set by run-all)")
+    .option(
+      "--preserve-gap-report",
+      "Append this exchange's gaps to a report reset by the parent run",
+    )
     .option("--no-fallback", "Skip REST fallback")
     .option(
       "--symbol <name>",
@@ -87,6 +93,7 @@ async function main(): Promise<void> {
     fileWorkers: string;
     maxDownloads: string;
     skipDiscovery?: boolean;
+    preserveGapReport?: boolean;
     noFallback?: boolean;
     symbol?: string[];
   }>();
@@ -107,6 +114,9 @@ async function main(): Promise<void> {
     skipDiscovery: opts.skipDiscovery,
     symbols: symbolFilter,
   });
+
+  if (!opts.preserveGapReport) resetArchiveGapReports(ctx.baseDir);
+  clearExchangeArchiveGapShards(ctx.baseDir, exchange);
 
   const exchangePending = ctx.pending.filter((t) => t.instrument.exchange === exchange);
   const symbols = uniqueSymbolsForExchange(exchangePending, exchange);
@@ -183,7 +193,7 @@ async function main(): Promise<void> {
     throw new Error(`${failed.length}/${processes} worker process(es) exited with error`);
   }
 
-  mergeShardArchiveGaps(ctx.baseDir, processes);
+  mergeShardArchiveGaps(ctx.baseDir, exchange, processes);
   mergeShardArchiveIncomplete(ctx.baseDir, exchange, processes);
 
   const manifestPath = writeArchiveManifest(ctx.baseDir, {

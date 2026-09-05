@@ -180,13 +180,14 @@ Scanning uses a **worker thread pool** (auto-detected CPU cores). Production sca
 
 ### Disk usage and retention
 
-Nothing in the pipeline deletes anything — every run only appends. On a long-lived VDS `data/market_stats/` grows without bound (100 GB+ over a couple of months is normal).
+Market candle caches and detector run directories are not pruned automatically. On a long-lived VDS `data/market_stats/` grows without bound (100 GB+ over a couple of months is normal).
 
 | Path | What it holds | Grows with | Read back? |
 |------|---------------|------------|------------|
 | `archives/` | Binance bulk archive downloads, `symbol=X/date=YYYY-MM-DD` | days × symbols | yes |
 | `api_fallback/raw/` | REST fallback candles, `date=YYYY-MM-DD/symbol=X` | days × symbols | yes |
 | `extracted/` | archives unpacked to NDJSON, `date=YYYY-MM-DD/symbol=X` | days × symbols | yes — derived, regenerable from `archives/` |
+| `reports/archive_gaps.ndjson` | missing archive URL diagnostics for the current fetch run | current run only | no |
 | `reports/pump_detector/<runId>/` | orchestrator log + two files per coin | **every run** (~50 MB each) | no |
 | `reports/scan_cache/` | per-coin scan results | symbol count only (~6 MB) | yes |
 

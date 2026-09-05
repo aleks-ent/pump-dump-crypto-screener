@@ -174,7 +174,13 @@ async function main(): Promise<void> {
       workers: seriesWorkers,
       onProgress: (done, total, task, row) => {
         if (row.gap_records.length > 0) {
-          appendShardArchiveGaps(ctx.baseDir, shardIndex, shardCount, row.gap_records);
+          appendShardArchiveGaps(
+            ctx.baseDir,
+            exchange,
+            shardIndex,
+            shardCount,
+            row.gap_records,
+          );
         }
         if (done === 1 || done === total || done % 25 === 0) {
           log(

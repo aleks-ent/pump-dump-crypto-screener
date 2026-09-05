@@ -1,4 +1,12 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 
 function ensureParent(path: string): void {
@@ -17,6 +25,47 @@ export function appendArchiveGaps(
   }
 }
 
+export function writeArchiveGaps(
+  baseDir: string,
+  rows: Record<string, unknown>[],
+): void {
+  const path = join(baseDir, "reports", "archive_gaps.ndjson");
+  ensureParent(path);
+  writeFileSync(
+    path,
+    rows.map((row) => JSON.stringify(row)).join("\n") + (rows.length > 0 ? "\n" : ""),
+    "utf-8",
+  );
+}
+
+const LEGACY_OR_EXCHANGE_SHARD_PATTERN =
+  /^archive_gaps(?:\.[^.]+)?\.shard-\d+-of-\d+\.ndjson$/;
+
+export function resetArchiveGapReports(baseDir: string): void {
+  writeArchiveGaps(baseDir, []);
+  const reportsDir = join(baseDir, "reports");
+  for (const name of readdirSync(reportsDir)) {
+    if (!LEGACY_OR_EXCHANGE_SHARD_PATTERN.test(name)) continue;
+    rmSync(join(reportsDir, name), { force: true });
+  }
+}
+
+export function clearExchangeArchiveGapShards(baseDir: string, exchange: string): void {
+  const reportsDir = join(baseDir, "reports");
+  if (!existsSync(reportsDir)) return;
+  const pattern = new RegExp(
+    `^archive_gaps\\.${escapeRegExp(exchange)}\\.shard-\\d+-of-\\d+\\.ndjson$`,
+  );
+  for (const name of readdirSync(reportsDir)) {
+    if (!pattern.test(name)) continue;
+    rmSync(join(reportsDir, name), { force: true });
+  }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export function writeArchiveManifest(
   baseDir: string,
   manifest: Record<string, unknown>,
@@ -29,32 +78,46 @@ export function writeArchiveManifest(
 
 export function appendShardArchiveGaps(
   baseDir: string,
+  exchange: string,
   shardIndex: number,
   shardCount: number,
   rows: Record<string, unknown>[],
 ): void {
   if (rows.length === 0) return;
-  const path = join(baseDir, "reports", `archive_gaps.shard-${shardIndex}-of-${shardCount}.ndjson`);
+  const path = join(
+    baseDir,
+    "reports",
+    `archive_gaps.${exchange}.shard-${shardIndex}-of-${shardCount}.ndjson`,
+  );
   ensureParent(path);
   for (const row of rows) {
     appendFileSync(path, `${JSON.stringify(row)}\n`, "utf-8");
   }
 }
 
-export function mergeShardArchiveGaps(baseDir: string, shardCount: number): void {
+export function mergeShardArchiveGaps(
+  baseDir: string,
+  exchange: string,
+  shardCount: number,
+): void {
   const reportsDir = join(baseDir, "reports");
   if (!existsSync(reportsDir)) return;
-  const pattern = new RegExp(`^archive_gaps\\.shard-\\d+-of-${shardCount}\\.ndjson$`);
+  const pattern = new RegExp(
+    `^archive_gaps\\.${escapeRegExp(exchange)}\\.shard-\\d+-of-${shardCount}\\.ndjson$`,
+  );
   const rows: Record<string, unknown>[] = [];
+  const sources: string[] = [];
   for (const name of readdirSync(reportsDir).sort()) {
     if (!pattern.test(name)) continue;
     const src = join(reportsDir, name);
+    sources.push(src);
     for (const line of readFileSync(src, "utf-8").split("\n")) {
       if (line.trim().length === 0) continue;
       rows.push(JSON.parse(line) as Record<string, unknown>);
     }
   }
   appendArchiveGaps(baseDir, rows);
+  for (const src of sources) rmSync(src, { force: true });
 }
 
 export function appendShardArchiveIncomplete(
